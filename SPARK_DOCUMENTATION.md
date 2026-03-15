@@ -400,10 +400,11 @@ score = (
 | Login | `/auth/login` | Email + password login |
 | Signup | `/auth/signup` | 3-step registration (info → gender → preferences) |
 | Onboarding | `/auth/onboarding` | Profile setup (photos → interests → bio) |
-| Discover | `/(tabs)/discover` | Swipe cards with energy bar and match alerts |
-| Matches | `/(tabs)/matches` | Match list with timer, compatibility %, last message |
-| Chat | `/(tabs)/chat/[matchId]` | Real-time messaging with typing indicators |
-| Map | `/(tabs)/map` | Proximity map with user pins and profile sheet |
+| Discover | `/(tabs)/discover` | Full-card swipe with photo carousel, gradient overlay, energy bar |
+| Likes | `/(tabs)/likes` | Received likes grid with blurred photos/names (premium feature) |
+| Chat | `/(tabs)/matches` | Match list with new matches row + conversations list |
+| Chat Room | `/(tabs)/chat/[matchId]` | Real-time messaging with typing indicators |
+| Map | `/(tabs)/map` | Proximity map (Leaflet on web) with user pins and profile modal |
 | Profile | `/(tabs)/profile` | Own profile, reputation, energy, preferences |
 
 ---
@@ -428,14 +429,151 @@ score = (
 
 ---
 
+## Mobile App Build (Android)
+
+The app is built using **Expo Application Services (EAS)** for Android APK generation.
+
+### Prerequisites
+
+```bash
+npm install -g eas-cli
+eas login
+```
+
+### Build Commands
+
+```bash
+cd spark-mobile
+
+# Preview APK (for testing on real devices)
+eas build --profile preview --platform android
+
+# Development build (with dev tools)
+eas build --profile development --platform android
+
+# Production build (for Play Store)
+eas build --profile production --platform android
+```
+
+### EAS Configuration
+
+The build profiles are defined in `spark-mobile/eas.json`:
+
+| Profile | Description | Output |
+|---------|-------------|--------|
+| `development` | Dev client with debugging tools | APK (internal) |
+| `preview` | Testing build without dev tools | APK (internal) |
+| `production` | Play Store release | AAB (auto-increment version) |
+
+### Latest Build
+
+**Android APK (Preview):**
+- Link: https://expo.dev/accounts/rodrigo.correia.23/projects/spark/builds/2aadf03e-0dcc-46b9-a16c-6b0e4319bf01
+- Open this link on your Android device (or scan the QR code) to install the app
+
+### Installing on Android
+
+1. Open the build link above on your Android phone
+2. Download the APK
+3. Allow "Install from unknown sources" if prompted
+4. Install and open the app
+5. Make sure the backend API is running and accessible from your phone's network
+
+> **Note:** For the app to connect to the backend from your phone, the API must be accessible on your local network. Update `API_URL` in `spark-mobile/utils/constants.ts` to use your computer's local IP (e.g., `http://192.168.1.66:3000/api`) instead of `localhost`.
+
+### Expo Project
+
+- **Account:** rodrigo.correia.23
+- **Project:** spark
+- **Dashboard:** https://expo.dev/accounts/rodrigo.correia.23/projects/spark
+
+### OTA Updates (Over-the-Air)
+
+EAS Update allows pushing JavaScript changes to users **without generating a new APK**. Users receive updates automatically when they open the app.
+
+**When to use OTA Update (no rebuild needed):**
+- Changes to JS/TS files (components, screens, styles, logic)
+- Bug fixes, text changes, new features in JavaScript
+- Basically any code change that doesn't touch native modules
+
+**When you need a full rebuild:**
+- Adding/removing native packages (`npm install react-native-camera`)
+- Changing `app.json` (permissions, plugins, package name, SDK version)
+- Upgrading Expo SDK
+
+**How to push an OTA update:**
+
+```bash
+cd spark-mobile
+git add -A
+git commit -m "description of changes"
+eas update --branch preview --message "description of changes"
+```
+
+The app on users' phones will automatically download the update next time they open it. No new APK, no new install link.
+
+**How it works:**
+1. `eas update` bundles your JS code and uploads it to Expo's CDN
+2. The app checks for updates on launch (configured in `app.json` under `updates.url`)
+3. If a new update is available, it downloads and applies it
+4. The `runtimeVersion` (set to `appVersion` policy) ensures updates only apply to compatible builds
+
+---
+
+## Push Notifications
+
+The app includes a notification system that works on both web (Browser Notification API) and mobile (expo-notifications).
+
+### Notification Events
+
+| Event | Title | Body | Details |
+|-------|-------|------|---------|
+| New message | "New message" | Preview of the message text | Shows when you receive a chat message |
+| Someone liked you | "Someone likes you!" | "Open Spark to see who it could be" | Anonymous — no name or photo revealed |
+| New match | "It's a Spark!" | "You have a new match! Start chatting now." | When a mutual like creates a match |
+| Match expiring | "Match expiring soon!" | "Don't let this spark die — reply before time runs out!" | 6 hours before 48h expiry |
+| Match expired | "Match expired" | "A match expired because no one replied in time." | After 48h ghosting |
+| Energy refilled | "Energy refilled!" | "You have 25 new swipes. Go find your spark!" | Daily energy reset |
+
+### Web Notifications
+
+- Uses the Browser Notification API
+- Browser will ask for permission on first load
+- To enable: click the lock icon in the address bar → Notifications → Allow
+- Notifications show even when the tab is not focused
+
+### Mobile Notifications
+
+- Uses `expo-notifications` for local and push notifications
+- Permission is requested automatically on app launch
+
+### How It Works
+
+1. Socket.io listeners are registered in the `useNotifications` hook
+2. When the backend emits events (`new_like`, `new_match`, `new_message_notification`, etc.), the frontend receives them via WebSocket
+3. The notification service shows a native notification (browser or mobile)
+4. The likes tab and matches tab auto-refresh when relevant events are received
+
+---
+
+## GitHub Repository
+
+- **Repository:** https://github.com/RodrigoCorreia23/Tinder2.0
+- Clone: `git clone git@github.com:RodrigoCorreia23/Tinder2.0.git`
+
+---
+
 ## Future Improvements
 
 - [ ] Photo upload to AWS S3 with presigned URLs (currently uses URLs directly)
 - [ ] OpenAI integration for smarter date suggestions
-- [ ] Push notifications with Expo Push Service
+- [ ] Premium subscription system (Stripe) — unlock Likes tab, unlimited swipes, extended range
 - [ ] Phone number verification
 - [ ] Report/block user functionality
 - [ ] Profile verification (selfie check)
 - [ ] Advanced NLP for topic detection in compatibility scoring
 - [ ] Redis caching for discover queries
 - [ ] Rate limiting on API endpoints
+- [ ] Super Like feature with daily limit
+- [ ] Rewind last swipe (premium)
+- [ ] iOS build and App Store submission
