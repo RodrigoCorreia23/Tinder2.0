@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS
+// ============================================
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  phone         String?  @unique
+  passwordHash  String   @map("password_hash")
+  firstName     String   @map("first_name")
+  dateOfBirth   DateTime @map("date_of_birth") @db.Date
+  gender        String
+  bio           String?
+
+  // Preferences
+  lookingFor    String[] @map("looking_for")
+  ageMin        Int      @default(18) @map("age_min")
+  ageMax        Int      @default(99) @map("age_max")
+  maxDistanceKm Int      @default(50) @map("max_distance_km")
+
+  // Anti-Ghosting / Reputation
+  reputationScore Float @default(50) @map("reputation_score")
+
+  // Energy System
+  energyRemaining Int       @default(25) @map("energy_remaining")
+  energyResetAt   DateTime? @map("energy_reset_at")
+
+  // Location (stored as lat/lng, PostGIS queries done via raw SQL)
+  latitude          Float?
+  longitude         Float?
+  locationUpdatedAt DateTime? @map("location_updated_at")
+
+  // Push notifications
+  expoPushToken String? @map("expo_push_token")
+
+  // Account state
+  isActive     Boolean  @default(true) @map("is_active")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  photos           UserPhoto[]
+  interests        UserInterest[]
+  swipesGiven      Swipe[]           @relation("SwipesGiven")
+  swipesReceived   Swipe[]           @relation("SwipesReceived")
+  matchesAsUser1   Match[]           @relation("MatchUser1")
+  matchesAsUser2   Match[]           @relation("MatchUser2")
+  messagesSent     Message[]
+  reputationEvents ReputationEvent[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+// ============================================
+// USER PHOTOS
+// ============================================
+model UserPhoto {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_photos")
+}
+
+// ============================================
+// INTERESTS
+// ============================================
+model Interest {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  category String?
+
+  users UserInterest[]
+
+  @@map("interests")
+}
+
+model UserInterest {
+  userId     String @map("user_id")
+  interestId Int    @map("interest_id")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@map("user_interests")
+}
+
+// ============================================
+// SWIPES
+// ============================================
+model Swipe {
+  id        String   @id @default(uuid())
+  swiperId  String   @map("swiper_id")
+  swipedId  String   @map("swiped_id")
+  direction String   // 'like' or 'pass'
+  createdAt DateTime @default(now()) @map("created_at")
+
+  swiper User @relation("SwipesGiven", fields: [swiperId], references: [id], onDelete: Cascade)
+  swiped User @relation("SwipesReceived", fields: [swipedId], references: [id], onDelete: Cascade)
+
+  @@unique([swiperId, swipedId])
+  @@map("swipes")
+}
+
+// ============================================
+// MATCHES
+// ============================================
+model Match {
+  id      String @id @default(uuid())
+  user1Id String @map("user1_id")
+  user2Id String @map("user2_id")
+  status  String @default("active") // 'active', 'expired', 'unmatched'
+
+  // Anti-Ghosting
+  lastMessageAt  DateTime? @map("last_message_at")
+  expiresAt      DateTime? @map("expires_at")
+  user1LastMsgAt DateTime? @map("user1_last_msg_at")
+  user2LastMsgAt DateTime? @map("user2_last_msg_at")
+
+  // Dynamic Compatibility
+  compatibilityScore Float @default(0) @map("compatibility_score")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user1                User                  @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2                User                  @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages             Message[]
+  compatibilityMetrics CompatibilityMetrics?
+  datePlans            DatePlan[]
+
+  @@unique([user1Id, user2Id])
+  @@map("matches")
+}
+
+// ============================================
+// MESSAGES
+// ============================================
+model Message {
+  id        String   @id @default(uuid())
+  matchId   String   @map("match_id")
+  senderId  String   @map("sender_id")
+  content   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  match  Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id])
+
+  @@index([matchId, createdAt(sort: Desc)])
+  @@map("messages")
+}
+
+// ============================================
+// COMPATIBILITY METRICS
+// ============================================
+model CompatibilityMetrics {
+  id      String @id @default(uuid())
+  matchId String @unique @map("match_id")
+
+  avgResponseTimeU1Secs Float  @default(0) @map("avg_response_time_u1_secs")
+  avgResponseTimeU2Secs Float  @default(0) @map("avg_response_time_u2_secs")
+  questionsAskedU1      Int    @default(0) @map("questions_asked_u1")
+  questionsAskedU2      Int    @default(0) @map("questions_asked_u2")
+  commonTopicsCount     Int    @default(0) @map("common_topics_count")
+  humorScoreU1          Float  @default(0) @map("humor_score_u1")
+  humorScoreU2          Float  @default(0) @map("humor_score_u2")
+  totalMessagesU1       Int    @default(0) @map("total_messages_u1")
+  totalMessagesU2       Int    @default(0) @map("total_messages_u2")
+  msgLengthAvgU1        Float  @default(0) @map("msg_length_avg_u1")
+  msgLengthAvgU2        Float  @default(0) @map("msg_length_avg_u2")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("compatibility_metrics")
+}
+
+// ============================================
+// DATE PLANS
+// ============================================
+model DatePlan {
+  id          String @id @default(uuid())
+  matchId     String @map("match_id")
+  suggestedBy String @default("ai") @map("suggested_by")
+
+  activity     String
+  venueName    String? @map("venue_name")
+  venueAddress String? @map("venue_address")
+  venueLat     Float?  @map("venue_lat")
+  venueLng     Float?  @map("venue_lng")
+  suggestedTime DateTime? @map("suggested_time")
+
+  status        String   @default("pending") // 'pending', 'accepted', 'declined', 'completed'
+  user1Accepted Boolean? @map("user1_accepted")
+  user2Accepted Boolean? @map("user2_accepted")
+
+  aiReasoning String? @map("ai_reasoning")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("date_plans")
+}
+
+// ============================================
+// REPUTATION EVENTS
+// ============================================
+model ReputationEvent {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  eventType String   @map("event_type")
+  delta     Float
+  newScore  Float    @map("new_score")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("reputation_events")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+model Notification {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  type   String // 'new_match', 'message', 'match_expiring', 'date_plan', 'energy_refill'
+  title  String
+  body   String?
+  data   Json?
+
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+}
