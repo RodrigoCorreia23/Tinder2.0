@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { env } from './config/env';
+import { setUserOnline, setUserOffline } from './modules/map/map.service';
 
 let io: Server;
 
@@ -36,6 +37,9 @@ export function initializeSocket(server: HttpServer) {
   io.on('connection', (socket: AuthSocket) => {
     console.log(`User connected: ${socket.userId}`);
 
+    // Track online status
+    if (socket.userId) setUserOnline(socket.userId);
+
     // Join personal room for direct notifications
     socket.join(`user:${socket.userId}`);
 
@@ -64,6 +68,7 @@ export function initializeSocket(server: HttpServer) {
     });
 
     socket.on('disconnect', () => {
+      if (socket.userId) setUserOffline(socket.userId);
       console.log(`User disconnected: ${socket.userId}`);
     });
   });

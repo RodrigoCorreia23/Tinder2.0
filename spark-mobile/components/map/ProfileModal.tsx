@@ -46,9 +46,17 @@ export default function ProfileModal({ user, onClose, onLike, onPass }: ProfileM
             <View style={styles.info}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>{user.firstName}, {user.age}</Text>
-                <View style={styles.repBadge}>
-                  <Ionicons name="star" size={14} color={COLORS.accent} />
-                  <Text style={styles.repText}>{Math.round(user.reputationScore)}</Text>
+                <View style={styles.statusRow}>
+                  {user.isOnline && (
+                    <View style={styles.onlineBadge}>
+                      <View style={styles.onlineDot} />
+                      <Text style={styles.onlineText}>Online</Text>
+                    </View>
+                  )}
+                  <View style={styles.repBadge}>
+                    <Ionicons name="star" size={14} color={COLORS.accent} />
+                    <Text style={styles.repText}>{Math.round(user.reputationScore)}</Text>
+                  </View>
                 </View>
               </View>
 
@@ -67,13 +75,18 @@ export default function ProfileModal({ user, onClose, onLike, onPass }: ProfileM
                       </View>
                     ))}
                   </View>
+                  {user.commonInterestsCount > 0 && (
+                    <Text style={styles.commonText}>
+                      {user.commonInterestsCount} interest{user.commonInterestsCount > 1 ? 's' : ''} in common
+                    </Text>
+                  )}
                 </View>
               )}
 
               {/* Nearby indicator */}
               <View style={styles.nearbyBadge}>
                 <Ionicons name="location" size={14} color={COLORS.primary} />
-                <Text style={styles.nearbyText}>Within 200m of you</Text>
+                <Text style={styles.nearbyText}>Nearby</Text>
               </View>
             </View>
           </ScrollView>
@@ -141,6 +154,37 @@ const styles = StyleSheet.create({
   info: {
     padding: 20,
     gap: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  onlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#2ECC71',
+  },
+  onlineText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2ECC71',
+  },
+  commonText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '600',
+    marginTop: 4,
   },
   nameRow: {
     flexDirection: 'row',

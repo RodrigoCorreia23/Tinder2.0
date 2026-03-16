@@ -88,26 +88,39 @@ export async function sendMessage(matchId: string, senderId: string, content: st
     },
   });
 
-  // Check for quick reply bonus (within 1 hour)
-  const lastMsgFromOther = isUser1 ? match.user2LastMsgAt : match.user1LastMsgAt;
-  if (lastMsgFromOther) {
-    const replyTimeMs = now.getTime() - lastMsgFromOther.getTime();
-    if (replyTimeMs < 60 * 60 * 1000) {
-      // Quick reply bonus
-      const user = await prisma.user.findUnique({
-        where: { id: senderId },
-        select: { reputationScore: true },
-      });
-      if (user) {
-        const newScore = clampReputation(
-          user.reputationScore + REPUTATION_EVENTS.QUICK_REPLY.delta
-        );
-        await prisma.user.update({
-          where: { id: senderId },
-          data: { reputationScore: newScore },
-        });
+  // Reputation: +0.5 for every message sent
+  const sender = await prisma.user.findUnique({
+    where: { id: senderId },
+    select: { reputationScore: true },
+  });
+  if (sender) {
+    let repDelta = REPUTATION_EVENTS.MESSAGE_SENT.delta;
+
+    // Check for quick reply bonus (within 1 hour)
+    const lastMsgFromOther = isUser1 ? match.user2LastMsgAt : match.user1LastMsgAt;
+    if (lastMsgFromOther) {
+      const replyTimeMs = now.getTime() - lastMsgFromOther.getTime();
+      if (replyTimeMs < 60 * 60 * 1000) {
+        repDelta += REPUTATION_EVENTS.QUICK_REPLY.delta;
       }
     }
+
+    const newScore = clampReputation(sender.reputationScore + repDelta);
+    await prisma.user.update({
+      where: { id: senderId },
+      data: { reputationScore: newScore },
+    });
+
+    await prisma.reputationEvent.create({
+      data: {
+        userId: senderId,
+        eventType: repDelta > REPUTATION_EVENTS.MESSAGE_SENT.delta
+          ? 'message_sent+quick_reply'
+          : REPUTATION_EVENTS.MESSAGE_SENT.type,
+        delta: repDelta,
+        newScore,
+      },
+    });
   }
 
   // Emit via socket

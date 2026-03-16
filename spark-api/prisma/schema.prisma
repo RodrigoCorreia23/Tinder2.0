@@ -26,6 +26,10 @@ model User {
   ageMax        Int      @default(99) @map("age_max")
   maxDistanceKm Int      @default(50) @map("max_distance_km")
 
+  // Premium
+  isPremium     Boolean  @default(false) @map("is_premium")
+  premiumUntil  DateTime? @map("premium_until")
+
   // Anti-Ghosting / Reputation
   reputationScore Float @default(50) @map("reputation_score")
 
@@ -58,6 +62,7 @@ model User {
   messagesSent     Message[]
   reputationEvents ReputationEvent[]
   notifications    Notification[]
+  dateAvailability DateAvailability[]
 
   @@map("users")
 }
@@ -145,6 +150,7 @@ model Match {
   messages             Message[]
   compatibilityMetrics CompatibilityMetrics?
   datePlans            DatePlan[]
+  dateAvailability     DateAvailability[]
 
   @@unique([user1Id, user2Id])
   @@map("matches")
@@ -192,6 +198,27 @@ model CompatibilityMetrics {
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@map("compatibility_metrics")
+}
+
+// ============================================
+// DATE AVAILABILITY
+// ============================================
+model DateAvailability {
+  id      String @id @default(uuid())
+  matchId String @map("match_id")
+  userId  String @map("user_id")
+
+  // Slots: array of available time windows
+  slots   Json   // [{ day: "2026-03-20", timeFrom: "18:00", timeTo: "22:00" }, ...]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+  @@map("date_availability")
 }
 
 // ============================================

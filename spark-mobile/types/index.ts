@@ -79,6 +79,9 @@ export interface NearbyUser {
   photo: Photo | null;
   photos: Photo[];
   interests: Interest[];
+  commonInterestsCount: number;
+  isOnline: boolean;
+  lastActiveAt: string;
   location: { lat: number; lng: number };
 }
 

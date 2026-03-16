@@ -16,12 +16,14 @@ import { useAuthStore } from '@/store/authStore';
 import { getSocket } from '@/services/socket';
 import { COLORS } from '@/utils/constants';
 import { Message } from '@/types';
+import DatePlanFlow from '@/components/chat/DatePlanFlow';
 
 export default function ChatScreen() {
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
   const { messages, loadMessages, sendMessage, addMessage, markAsRead } = useChatStore();
   const user = useAuthStore((s) => s.user);
   const [text, setText] = useState('');
+  const [showDatePlan, setShowDatePlan] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const chatMessages = messages[matchId!] || [];
@@ -96,6 +98,12 @@ export default function ChatScreen() {
       />
 
       <View style={styles.inputContainer}>
+        <TouchableOpacity
+          style={styles.datePlanBtn}
+          onPress={() => setShowDatePlan(true)}
+        >
+          <Ionicons name="calendar" size={22} color={COLORS.primary} />
+        </TouchableOpacity>
         <TextInput
           style={styles.input}
           placeholder="Type a message..."
@@ -119,6 +127,13 @@ export default function ChatScreen() {
           <Ionicons name="send" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      {/* Date Plan Flow */}
+      <DatePlanFlow
+        matchId={matchId!}
+        visible={showDatePlan}
+        onClose={() => setShowDatePlan(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -163,6 +178,14 @@ const styles = StyleSheet.create({
   },
   myMessageTime: {
     color: 'rgba(255,255,255,0.7)',
+  },
+  datePlanBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.backgroundDark,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   inputContainer: {
     flexDirection: 'row',

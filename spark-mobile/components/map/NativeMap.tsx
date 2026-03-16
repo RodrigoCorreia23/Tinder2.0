@@ -49,7 +49,7 @@ export default function NativeMap({ latitude, longitude, nearbyUsers, onPinPress
 
     // 200m radius
     L.circle([${latitude}, ${longitude}], {
-      radius: 200,
+      radius: 1000,
       color: '${COLORS.primary}',
       fillColor: '${COLORS.primary}',
       fillOpacity: 0.06,

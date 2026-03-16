@@ -2,20 +2,52 @@ import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
 import { randomizeCoordinates } from '../../shared/utils/geo';
 
-const PROXIMITY_RADIUS_METERS = 200;
+const FREE_RADIUS_METERS = 1000;
+const PREMIUM_RADIUS_METERS = 5000;
 
-export async function getNearbyUsers(userId: string, lat: number, lng: number) {
+// Track online users via socket connections
+const onlineUsers = new Set<string>();
+
+export function setUserOnline(userId: string) {
+  onlineUsers.add(userId);
+}
+
+export function setUserOffline(userId: string) {
+  onlineUsers.delete(userId);
+}
+
+export function isUserOnline(userId: string): boolean {
+  return onlineUsers.has(userId);
+}
+
+interface NearbyFilters {
+  minReputation?: number;
+  commonInterestsOnly?: boolean;
+}
+
+export async function getNearbyUsers(
+  userId: string,
+  lat: number,
+  lng: number,
+  filters?: NearbyFilters
+) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { gender: true, lookingFor: true },
+    select: {
+      gender: true,
+      lookingFor: true,
+      isPremium: true,
+      interests: { select: { interestId: true } },
+    },
   });
 
   if (!user) throw new AppError('User not found', 404);
 
-  // Find users within 200m radius matching preferences
-  // Using Haversine approximation since we're not using PostGIS extension directly
-  const latDelta = PROXIMITY_RADIUS_METERS / 111320; // ~meters per degree latitude
-  const lngDelta = PROXIMITY_RADIUS_METERS / (111320 * Math.cos((lat * Math.PI) / 180));
+  const radiusMeters = user.isPremium ? PREMIUM_RADIUS_METERS : FREE_RADIUS_METERS;
+
+  // Find users within radius matching preferences
+  const latDelta = radiusMeters / 111320;
+  const lngDelta = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
 
   const nearbyUsers = await prisma.user.findMany({
     where: {
@@ -31,6 +63,8 @@ export async function getNearbyUsers(userId: string, lat: number, lng: number) {
         gte: lng - lngDelta,
         lte: lng + lngDelta,
       },
+      // Premium filter: minimum reputation
+      ...(filters?.minReputation ? { reputationScore: { gte: filters.minReputation } } : {}),
     },
     select: {
       id: true,
@@ -40,23 +74,31 @@ export async function getNearbyUsers(userId: string, lat: number, lng: number) {
       reputationScore: true,
       latitude: true,
       longitude: true,
+      lastActiveAt: true,
       photos: { orderBy: { position: 'asc' } },
       interests: { include: { interest: true } },
     },
   });
+
+  const userInterestIds = new Set(user.interests.map((i) => i.interestId));
 
   // Randomize locations for privacy and calculate exact distance
   return nearbyUsers
     .filter((u) => {
       if (!u.latitude || !u.longitude) return false;
       const dist = haversineMeters(lat, lng, u.latitude, u.longitude);
-      return dist <= PROXIMITY_RADIUS_METERS;
+      return dist <= radiusMeters;
     })
     .map((u) => {
       const randomized = randomizeCoordinates(u.latitude!, u.longitude!, 50);
       const age = Math.floor(
         (Date.now() - u.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
       );
+
+      const userInterests = u.interests.map((ui) => ui.interest);
+      const commonInterestsCount = u.interests.filter(
+        (ui) => userInterestIds.has(ui.interestId)
+      ).length;
 
       return {
         id: u.id,
@@ -66,10 +108,28 @@ export async function getNearbyUsers(userId: string, lat: number, lng: number) {
         reputationScore: u.reputationScore,
         photo: u.photos[0] || null,
         photos: u.photos,
-        interests: u.interests.map((ui) => ui.interest).slice(0, 3),
+        interests: userInterests.slice(0, 5),
+        commonInterestsCount,
+        isOnline: isUserOnline(u.id),
+        lastActiveAt: u.lastActiveAt,
         location: randomized, // Never real location
       };
+    })
+    .filter((u) => {
+      // Premium filter: common interests only
+      if (filters?.commonInterestsOnly && u.commonInterestsCount === 0) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // Online users first, then by reputation
+      if (a.isOnline && !b.isOnline) return -1;
+      if (!a.isOnline && b.isOnline) return 1;
+      return b.reputationScore - a.reputationScore;
     });
+}
+
+export function getRadiusForUser(isPremium: boolean): number {
+  return isPremium ? PREMIUM_RADIUS_METERS : FREE_RADIUS_METERS;
 }
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
