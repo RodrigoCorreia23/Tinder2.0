@@ -56,9 +56,20 @@ export async function setAvailability(
       return { availability, plan, overlapping };
     }
 
-    // Notify that there's no overlap
-    io.to(`match:${matchId}`).emit('date_no_overlap', { matchId });
-    return { availability, plan: null, overlapping: [] };
+    // No overlap — fallback to next Saturday at 19:00
+    const now = new Date();
+    const daysUntilSaturday = (6 - now.getDay() + 7) % 7 || 7;
+    const saturday = new Date(now);
+    saturday.setDate(now.getDate() + daysUntilSaturday);
+    const fallbackSlot: TimeSlot = {
+      day: saturday.toISOString().split('T')[0],
+      timeFrom: '19:00',
+      timeTo: '23:00',
+    };
+
+    const plan = await generateDatePlan(matchId, userId, fallbackSlot);
+    io.to(`match:${matchId}`).emit('date_plan_ready', { matchId, datePlan: plan });
+    return { availability, plan, overlapping: [], fallback: true };
   }
 
   return { availability, plan: null, overlapping: null };
