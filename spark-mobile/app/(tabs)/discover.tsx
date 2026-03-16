@@ -42,13 +42,33 @@ export default function DiscoverScreen() {
   }, []);
 
   const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass') => {
-    const targetProfile = profilesRef.current.find((p) => p.id === targetUserId);
+    // Deep copy the profile BEFORE swipe removes it from the store
+    const targetProfile = JSON.parse(
+      JSON.stringify(profilesRef.current.find((p) => p.id === targetUserId) || null)
+    ) as Profile | null;
+
     try {
       const matched = await swipe(targetUserId, direction);
-      console.log('[DISCOVER] Swipe result:', { targetUserId, direction, matched });
-      if (matched && targetProfile) {
-        console.log('[DISCOVER] Match! Showing animation');
-        setMatchedProfile(targetProfile);
+      console.log('[DISCOVER] Swipe result:', { targetUserId, direction, matched, hasProfile: !!targetProfile });
+      if (matched) {
+        if (targetProfile) {
+          setMatchedProfile(targetProfile);
+        } else {
+          // Fallback: show a basic match alert if profile not found
+          console.log('[DISCOVER] Match but profile not found, using fallback');
+          setMatchedProfile({
+            id: targetUserId,
+            firstName: 'Someone',
+            age: 0,
+            gender: '',
+            bio: null,
+            reputationScore: 50,
+            isVerified: false,
+            distance: null,
+            photos: [],
+            interests: [],
+          });
+        }
         loadMatches();
       }
     } catch (err) {
