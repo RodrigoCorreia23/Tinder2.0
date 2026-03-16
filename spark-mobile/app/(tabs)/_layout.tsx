@@ -1,0 +1,92 @@
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '@/utils/constants';
+import { useNotifications } from '@/hooks/useNotifications';
+import { useSwipeStore } from '@/store/swipeStore';
+
+export default function TabsLayout() {
+  // Initialize push notifications
+  useNotifications();
+
+  const likesCount = useSwipeStore((s) => s.receivedLikes.length);
+
+  return (
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarStyle: {
+          backgroundColor: COLORS.background,
+          borderTopColor: COLORS.border,
+          height: 88,
+          paddingBottom: 28,
+          paddingTop: 8,
+        },
+        headerStyle: { backgroundColor: COLORS.background },
+        headerTintColor: COLORS.text,
+      }}
+    >
+      <Tabs.Screen
+        name="discover"
+        options={{
+          title: 'Discover',
+          headerTitle: 'Spark',
+          headerTitleStyle: { fontWeight: 'bold', color: COLORS.primary, fontSize: 24 },
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flame" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="likes"
+        options={{
+          title: 'Likes',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="heart-circle" size={size} color={color} />
+          ),
+          tabBarBadge: likesCount > 0 ? likesCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: COLORS.primary,
+            fontSize: 11,
+            fontWeight: 'bold',
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="matches"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="map"
+        options={{
+          title: 'Nearby',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="location" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
+        }}
+      />
+      {/* Hide chat from tab bar */}
+      <Tabs.Screen
+        name="chat"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+    </Tabs>
+  );
+}
