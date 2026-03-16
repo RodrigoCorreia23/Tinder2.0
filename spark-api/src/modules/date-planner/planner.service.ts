@@ -2,6 +2,7 @@ import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
 import { getIO } from '../../socket';
 import { clampReputation, REPUTATION_EVENTS } from '../../shared/utils/scoring';
+import { generateAIDatePlan } from '../../shared/utils/ai';
 
 interface TimeSlot {
   day: string;      // "2026-03-20"
@@ -127,26 +128,43 @@ export async function generateDatePlan(
   }
 
   // Find common interests
-  const u1Interests = new Set(match.user1.interests.map((i) => i.interest.name));
-  const commonInterests = match.user2.interests
-    .map((i) => i.interest.name)
-    .filter((name) => u1Interests.has(name));
+  const u1InterestNames = match.user1.interests.map((i) => i.interest.name);
+  const u2InterestNames = match.user2.interests.map((i) => i.interest.name);
+  const u1Set = new Set(u1InterestNames);
+  const commonInterests = u2InterestNames.filter((name) => u1Set.has(name));
 
-  const allInterests = [
-    ...match.user1.interests.map((i) => i.interest.name),
-    ...match.user2.interests.map((i) => i.interest.name),
-  ];
+  // Generate date time
+  let suggestedTime: Date;
+  if (preferredSlot) {
+    const [h, m] = preferredSlot.timeFrom.split(':').map(Number);
+    suggestedTime = new Date(preferredSlot.day);
+    suggestedTime.setHours(h, m, 0, 0);
+  } else {
+    suggestedTime = new Date();
+    const daysUntilSaturday = (6 - suggestedTime.getDay() + 7) % 7 || 7;
+    suggestedTime.setDate(suggestedTime.getDate() + daysUntilSaturday);
+    suggestedTime.setHours(19, 0, 0, 0);
+  }
 
-  const plan = generateSuggestion(commonInterests, allInterests, preferredSlot);
+  // Use AI to generate the plan
+  const aiSuggestion = await generateAIDatePlan({
+    user1Name: match.user1.firstName,
+    user2Name: match.user2.firstName,
+    commonInterests,
+    user1Interests: u1InterestNames,
+    user2Interests: u2InterestNames,
+    preferredDay: preferredSlot?.day,
+    preferredTime: preferredSlot?.timeFrom,
+  });
 
   const datePlan = await prisma.datePlan.create({
     data: {
       matchId,
-      activity: plan.activity,
-      venueName: plan.venueName,
-      venueAddress: plan.venueAddress,
-      suggestedTime: plan.suggestedTime,
-      aiReasoning: plan.reasoning,
+      activity: aiSuggestion.activity,
+      venueName: aiSuggestion.venueName,
+      venueAddress: aiSuggestion.venueAddress,
+      suggestedTime,
+      aiReasoning: aiSuggestion.reasoning,
     },
   });
 

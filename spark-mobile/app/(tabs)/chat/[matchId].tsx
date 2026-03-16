@@ -17,6 +17,7 @@ import { getSocket } from '@/services/socket';
 import { COLORS } from '@/utils/constants';
 import { Message } from '@/types';
 import DatePlanFlow from '@/components/chat/DatePlanFlow';
+import api from '@/services/api';
 
 export default function ChatScreen() {
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
@@ -24,6 +25,7 @@ export default function ChatScreen() {
   const user = useAuthStore((s) => s.user);
   const [text, setText] = useState('');
   const [showDatePlan, setShowDatePlan] = useState(false);
+  const [iceBreakers, setIceBreakers] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
 
   const chatMessages = messages[matchId!] || [];
@@ -32,6 +34,23 @@ export default function ChatScreen() {
     if (!matchId) return;
     loadMessages(matchId);
     markAsRead(matchId);
+
+    // Load ice breakers if no messages
+    loadIceBreakers();
+  }, [matchId]);
+
+  const loadIceBreakers = async () => {
+    if (!matchId) return;
+    try {
+      const res = await api.get(`/matches/${matchId}/ice-breakers`);
+      setIceBreakers(res.data.iceBreakers || []);
+    } catch {
+      // Silently fail
+    }
+  };
+
+  useEffect(() => {
+    if (!matchId) return;
 
     // Join socket room
     const socket = getSocket();
@@ -95,6 +114,31 @@ export default function ChatScreen() {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        ListEmptyComponent={
+          iceBreakers.length > 0 ? (
+            <View style={styles.iceBreakersContainer}>
+              <View style={styles.iceBreakersIcon}>
+                <Ionicons name="sparkles" size={28} color={COLORS.secondary} />
+              </View>
+              <Text style={styles.iceBreakersTitle}>Break the ice!</Text>
+              <Text style={styles.iceBreakersSubtitle}>Tap a suggestion to send it</Text>
+              {iceBreakers.map((msg, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.iceBreaker}
+                  onPress={async () => {
+                    await sendMessage(matchId!, msg);
+                    setIceBreakers([]);
+                    flatListRef.current?.scrollToEnd();
+                  }}
+                >
+                  <Text style={styles.iceBreakerText}>{msg}</Text>
+                  <Ionicons name="send" size={14} color={COLORS.primary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null
+        }
       />
 
       <View style={styles.inputContainer}>
@@ -178,6 +222,50 @@ const styles = StyleSheet.create({
   },
   myMessageTime: {
     color: 'rgba(255,255,255,0.7)',
+  },
+  iceBreakersContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  iceBreakersIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F0FFF4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  iceBreakersTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  iceBreakersSubtitle: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    marginBottom: 8,
+  },
+  iceBreaker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+  },
+  iceBreakerText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.text,
   },
   datePlanBtn: {
     width: 40,

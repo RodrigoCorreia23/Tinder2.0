@@ -10,5 +10,6 @@ router.get('/', matchController.getMatches);
 router.get('/:matchId', matchController.getMatch);
 router.delete('/:matchId', matchController.unmatch);
 router.get('/:matchId/compatibility', matchController.getCompatibility);
+router.get('/:matchId/ice-breakers', matchController.getIceBreakers);
 
 export default router;
