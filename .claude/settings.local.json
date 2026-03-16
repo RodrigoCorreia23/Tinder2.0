@@ -4,7 +4,8 @@
       "WebSearch",
       "Bash(node:*)",
       "Bash(cd:*)",
-      "Bash(npx expo:*)"
+      "Bash(npx expo:*)",
+      "WebFetch(domain:spark-api-yvl3.onrender.com)"
     ]
   }
 }
