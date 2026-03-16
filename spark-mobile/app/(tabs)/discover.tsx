@@ -32,32 +32,31 @@ export default function DiscoverScreen() {
   const user = useAuthStore((s) => s.user);
   const loadMatches = useChatStore((s) => s.loadMatches);
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null);
-  const profilesRef = useRef<Profile[]>([]);
-  profilesRef.current = profiles;
+  const swipedProfilesCache = useRef<Record<string, Profile>>({});
+
+  // Cache every profile we see for match animation later
+  useEffect(() => {
+    profiles.forEach((p) => {
+      swipedProfilesCache.current[p.id] = p;
+    });
+  }, [profiles]);
 
   useEffect(() => {
     loadProfiles();
     loadEnergy();
     loadReceivedLikes();
-  }, []);
 
-  const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass') => {
-    // Deep copy the profile BEFORE swipe removes it from the store
-    const targetProfile = JSON.parse(
-      JSON.stringify(profilesRef.current.find((p) => p.id === targetUserId) || null)
-    ) as Profile | null;
-
-    try {
-      const matched = await swipe(targetUserId, direction);
-      console.log('[DISCOVER] Swipe result:', { targetUserId, direction, matched, hasProfile: !!targetProfile });
-      if (matched) {
-        if (targetProfile) {
-          setMatchedProfile(targetProfile);
+    // Listen for match via socket — this is the reliable way
+    const socket = require('@/services/socket').getSocket();
+    if (socket) {
+      const handleNewMatch = (data: { matchId: string; userId: string }) => {
+        console.log('[DISCOVER] Socket new_match event:', data);
+        const cached = swipedProfilesCache.current[data.userId];
+        if (cached) {
+          setMatchedProfile(cached);
         } else {
-          // Fallback: show a basic match alert if profile not found
-          console.log('[DISCOVER] Match but profile not found, using fallback');
           setMatchedProfile({
-            id: targetUserId,
+            id: data.userId,
             firstName: 'Someone',
             age: 0,
             gender: '',
@@ -70,7 +69,19 @@ export default function DiscoverScreen() {
           });
         }
         loadMatches();
-      }
+      };
+
+      socket.on('new_match', handleNewMatch);
+      return () => {
+        socket.off('new_match', handleNewMatch);
+      };
+    }
+  }, []);
+
+  const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass') => {
+    try {
+      await swipe(targetUserId, direction);
+      // Match animation is now handled by the socket 'new_match' event above
     } catch (err) {
       console.error('[DISCOVER] Swipe error:', err);
     }
