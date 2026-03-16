@@ -57,20 +57,24 @@ Spark is a dating app built to create meaningful connections through intentional
 
 | Layer | Technology |
 |-------|-----------|
-| **Mobile App** | React Native + Expo (TypeScript) |
+| **Mobile App** | React Native + Expo SDK 55 (TypeScript) |
 | **Navigation** | Expo Router (file-based) |
 | **State** | Zustand (client state) |
-| **API Client** | Axios with JWT interceptors |
+| **API Client** | Axios with JWT interceptors + auto refresh |
 | **Backend API** | Node.js + Express (TypeScript) |
-| **Database** | PostgreSQL |
+| **Database** | PostgreSQL (Render) |
 | **ORM** | Prisma |
 | **Real-time** | Socket.io |
 | **Auth** | JWT (access + refresh tokens) |
 | **Cron Jobs** | node-cron |
 | **Validation** | Zod |
-| **Maps** | react-native-maps |
+| **Maps** | react-native-maps (mobile) + Leaflet (web) |
 | **Location** | expo-location |
-| **Secure Storage** | expo-secure-store |
+| **Secure Storage** | expo-secure-store (mobile) + localStorage (web) |
+| **Notifications** | expo-notifications (mobile) + Browser Notification API (web) |
+| **Photo Gallery** | Custom PhotoCarousel component (Instagram-style) |
+| **Hosting** | Render (backend + DB) + EAS (mobile builds + OTA updates) |
+| **CI/CD** | Auto-deploy on git push (Render) + OTA updates (EAS) |
 
 ---
 
@@ -214,6 +218,7 @@ users 1──N notifications
 | GET | `/discover` | Get candidate profiles (filtered by preferences) |
 | POST | `/` | Swipe on user `{ targetUserId, direction }` |
 | GET | `/energy` | Get current energy + reset time |
+| GET | `/likes` | Get received likes (people who liked you, not yet swiped back) |
 
 ### Matches (`/api/matches`)
 | Method | Path | Description |
@@ -254,6 +259,7 @@ users 1──N notifications
 | `new_message` | { matchId, message } | New chat message |
 | `message_read` | { matchId, readBy } | Messages marked as read |
 | `user_typing` | { matchId, userId } | Someone is typing |
+| `new_like` | { message } | Someone liked you (anonymous) |
 | `new_match` | { matchId, userId } | New match created |
 | `match_expired` | { matchId } | Match expired (48h ghosting) |
 | `compatibility_updated` | { matchId, score } | Score recalculated |
@@ -263,14 +269,69 @@ users 1──N notifications
 
 ---
 
-## How to Run
+## Production Deployment
+
+The app is deployed in the cloud and works without any local setup.
+
+### Backend (Render)
+
+- **API URL:** https://spark-api-yvl3.onrender.com
+- **Health check:** https://spark-api-yvl3.onrender.com/api/health
+- **Platform:** Render (free tier)
+- **Database:** PostgreSQL on Render (free tier)
+- **Auto-deploy:** Pushes to `main` branch on GitHub trigger automatic redeploy
+
+> **Note:** On the free tier, the server sleeps after 15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake up. After that, it's fast.
+
+### Updating the Backend
+
+```bash
+cd spark-api
+# Make your changes
+cd ..
+git add -A
+git commit -m "description"
+git push
+# Render auto-deploys from GitHub
+```
+
+### Updating the Frontend (OTA — no reinstall needed)
+
+```bash
+cd spark-mobile
+git add -A
+git commit -m "description"
+eas update --branch preview --message "description"
+# App updates automatically on next open
+```
+
+### Render Dashboard
+
+- **Project:** https://dashboard.render.com
+- **Web Service:** spark-api
+- **Database:** spark-db (PostgreSQL)
+
+### Environment Variables (Render)
+
+| Variable | Value |
+|----------|-------|
+| `DATABASE_URL` | (set automatically by Render PostgreSQL) |
+| `JWT_SECRET` | (64-byte hex key) |
+| `JWT_REFRESH_SECRET` | (64-byte hex key) |
+| `JWT_EXPIRES_IN` | `24h` |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` |
+| `NODE_ENV` | `production` |
+| `PORT` | `3000` |
+
+---
+
+## Local Development
 
 ### Prerequisites
 - **Node.js** v18+ installed
 - **PostgreSQL** installed and running locally (or via Docker)
 - **npm** or **yarn**
 - **Expo CLI**: `npm install -g expo-cli`
-- **Expo Go** app on your phone (for mobile testing)
 
 ### 1. Database Setup
 
@@ -468,7 +529,7 @@ The build profiles are defined in `spark-mobile/eas.json`:
 ### Latest Build
 
 **Android APK (Preview):**
-- Link: https://expo.dev/accounts/rodrigo.correia.23/projects/spark/builds/2aadf03e-0dcc-46b9-a16c-6b0e4319bf01
+- Link: https://expo.dev/accounts/rodrigo.correia.23/projects/spark/builds/ccd96f49-04bb-4ca7-9472-5b0bd416790d
 - Open this link on your Android device (or scan the QR code) to install the app
 
 ### Installing on Android
@@ -477,9 +538,7 @@ The build profiles are defined in `spark-mobile/eas.json`:
 2. Download the APK
 3. Allow "Install from unknown sources" if prompted
 4. Install and open the app
-5. Make sure the backend API is running and accessible from your phone's network
-
-> **Note:** For the app to connect to the backend from your phone, the API must be accessible on your local network. Update `API_URL` in `spark-mobile/utils/constants.ts` to use your computer's local IP (e.g., `http://192.168.1.66:3000/api`) instead of `localhost`.
+5. The app connects to the cloud API automatically — no local setup needed
 
 ### Expo Project
 
