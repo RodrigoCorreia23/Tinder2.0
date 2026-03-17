@@ -21,6 +21,8 @@ export async function getProfile(userId: string) {
       latitude: true,
       longitude: true,
       isVerified: true,
+      isPremium: true,
+      premiumUntil: true,
       createdAt: true,
       photos: {
         orderBy: { position: 'asc' },
@@ -220,5 +222,39 @@ export async function updatePushToken(userId: string, token: string) {
   return prisma.user.update({
     where: { id: userId },
     data: { expoPushToken: token },
+  });
+}
+
+export async function deleteAccount(userId: string) {
+  return prisma.user.delete({
+    where: { id: userId },
+  });
+}
+
+export async function requestVerification(userId: string) {
+  // For now, just set isVerified to true. In production, this would
+  // trigger a verification flow (selfie check, ID upload, etc.)
+  return prisma.user.update({
+    where: { id: userId },
+    data: { isVerified: true },
+    select: { id: true, isVerified: true },
+  });
+}
+
+export async function activatePremium(userId: string, durationDays: number) {
+  const now = new Date();
+  const premiumUntil = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      isPremium: true,
+      premiumUntil,
+    },
+    select: {
+      id: true,
+      isPremium: true,
+      premiumUntil: true,
+    },
   });
 }

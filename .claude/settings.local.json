@@ -5,7 +5,11 @@
       "Bash(node:*)",
       "Bash(cd:*)",
       "Bash(npx expo:*)",
-      "WebFetch(domain:spark-api-yvl3.onrender.com)"
+      "WebFetch(domain:spark-api-yvl3.onrender.com)",
+      "Bash(ls:*)",
+      "WebFetch(domain:expo.dev)",
+      "Bash(npx prisma:*)",
+      "Bash(npx --package=prisma@5.20 prisma migrate dev --name add_super_like_block_report --create-only)"
     ]
   }
 }

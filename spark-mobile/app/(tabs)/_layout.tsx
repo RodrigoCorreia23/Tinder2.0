@@ -3,12 +3,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/utils/constants';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useSwipeStore } from '@/store/swipeStore';
+import { useChatStore } from '@/store/chatStore';
+import { useAuthStore } from '@/store/authStore';
 
 export default function TabsLayout() {
   // Initialize push notifications
   useNotifications();
 
   const likesCount = useSwipeStore((s) => s.receivedLikes.length);
+  const matches = useChatStore((s) => s.matches);
+  const currentUserId = useAuthStore((s) => s.user?.id);
+
+  const unreadCount = matches.filter(
+    (m) =>
+      m.lastMessage &&
+      m.lastMessage.isRead === false &&
+      m.lastMessage.senderId !== currentUserId
+  ).length;
 
   return (
     <Tabs
@@ -59,6 +70,12 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles" size={size} color={color} />
           ),
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: COLORS.primary,
+            fontSize: 11,
+            fontWeight: 'bold',
+          },
         }}
       />
       <Tabs.Screen

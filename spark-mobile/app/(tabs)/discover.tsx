@@ -9,6 +9,11 @@ import {
   PanResponder,
   ActivityIndicator,
   Platform,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,20 +25,41 @@ import { COLORS } from '@/utils/constants';
 import { Profile } from '@/types';
 import MatchAnimation from '@/components/match/MatchAnimation';
 import PhotoCarousel from '@/components/ui/PhotoCarousel';
+import * as userService from '@/services/user.service';
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width - 20;
 const CARD_HEIGHT = height * 0.72;
 const SWIPE_THRESHOLD = width * 0.25;
+const SWIPE_UP_THRESHOLD = height * 0.15;
 
 export default function DiscoverScreen() {
   const router = useRouter();
-  const { profiles, energy, isLoading, lastMatch, loadProfiles, loadEnergy, swipe, clearMatch, loadReceivedLikes } =
-    useSwipeStore();
+  const {
+    profiles,
+    energy,
+    isLoading,
+    lastMatch,
+    superLikeRemaining,
+    loadProfiles,
+    loadEnergy,
+    swipe,
+    clearMatch,
+    loadReceivedLikes,
+    loadSuperLikeStatus,
+  } = useSwipeStore();
   const user = useAuthStore((s) => s.user);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
   const loadMatches = useChatStore((s) => s.loadMatches);
   const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterAgeMin, setFilterAgeMin] = useState(String(user?.ageMin ?? 18));
+  const [filterAgeMax, setFilterAgeMax] = useState(String(user?.ageMax ?? 99));
+  const [filterDistance, setFilterDistance] = useState(String(user?.maxDistanceKm ?? 50));
   const swipedProfilesCache = useRef<Record<string, Profile>>({});
+
+  const isPremium = user?.isPremium === true;
 
   // Cache every profile we see for match animation later
   useEffect(() => {
@@ -46,7 +72,43 @@ export default function DiscoverScreen() {
     loadProfiles();
     loadEnergy();
     loadReceivedLikes();
+    loadSuperLikeStatus();
   }, []);
+
+  // Sync filter fields when user data changes
+  useEffect(() => {
+    if (user) {
+      setFilterAgeMin(String(user.ageMin));
+      setFilterAgeMax(String(user.ageMax));
+      setFilterDistance(String(user.maxDistanceKm));
+    }
+  }, [user?.ageMin, user?.ageMax, user?.maxDistanceKm]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadProfiles(), loadEnergy()]);
+    setRefreshing(false);
+  };
+
+  const handleApplyFilters = async () => {
+    const ageMin = Math.max(18, parseInt(filterAgeMin, 10) || 18);
+    const ageMax = Math.min(99, parseInt(filterAgeMax, 10) || 99);
+    const maxDistanceKm = Math.max(1, parseInt(filterDistance, 10) || 50);
+    try {
+      await userService.updateProfile({ ageMin, ageMax, maxDistanceKm });
+      await refreshUser();
+      await loadProfiles();
+      setShowFilters(false);
+    } catch {
+      // silent
+    }
+  };
+
+  const handleResetFilters = () => {
+    setFilterAgeMin('18');
+    setFilterAgeMax('99');
+    setFilterDistance('50');
+  };
 
   // Listen for match via socket
   useEffect(() => {
@@ -105,16 +167,15 @@ export default function DiscoverScreen() {
     }
   }, [lastMatch]);
 
-  const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass') => {
+  const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) => {
     try {
-      await swipe(targetUserId, direction);
-      // Match animation is now handled by the socket 'new_match' event above
+      await swipe(targetUserId, direction, isSuperLike);
     } catch (err) {
       console.error('[DISCOVER] Swipe error:', err);
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !refreshing) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -123,9 +184,14 @@ export default function DiscoverScreen() {
     );
   }
 
-  if (profiles.length === 0) {
+  if (profiles.length === 0 && !refreshing) {
     return (
-      <View style={styles.center}>
+      <ScrollView
+        contentContainerStyle={styles.center}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+        }
+      >
         <View style={styles.emptyIconCircle}>
           <Ionicons name="search" size={40} color={COLORS.primary} />
         </View>
@@ -135,7 +201,7 @@ export default function DiscoverScreen() {
           <Ionicons name="refresh" size={18} color="#fff" />
           <Text style={styles.refreshText}>Refresh</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -147,29 +213,48 @@ export default function DiscoverScreen() {
       {/* Energy bar */}
       <View style={styles.energyBar}>
         <View style={styles.energyLeft}>
-          <Ionicons name="flash" size={18} color={energyColor} />
-          <Text style={[styles.energyCount, { color: energyColor }]}>{energy.remaining}</Text>
+          <Ionicons name="flash" size={18} color={isPremium ? '#FFD700' : energyColor} />
+          {isPremium ? (
+            <Text style={[styles.energyCount, { color: '#FFD700' }]}>Unlimited</Text>
+          ) : (
+            <Text style={[styles.energyCount, { color: energyColor }]}>{energy.remaining}</Text>
+          )}
         </View>
-        <View style={styles.energyTrack}>
-          <Animated.View
-            style={[styles.energyFill, { width: `${energyPercent}%`, backgroundColor: energyColor }]}
-          />
-        </View>
-        <Text style={styles.energyLabel}>swipes left today</Text>
+        {!isPremium && (
+          <View style={styles.energyTrack}>
+            <Animated.View
+              style={[styles.energyFill, { width: `${energyPercent}%`, backgroundColor: energyColor }]}
+            />
+          </View>
+        )}
+        <Text style={styles.energyLabel}>{isPremium ? 'Premium' : 'swipes left today'}</Text>
+        <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
+          <Ionicons name="options" size={20} color={COLORS.text} />
+        </TouchableOpacity>
       </View>
 
-      {/* Card stack */}
+      {/* Card stack with pull-to-refresh */}
+      <ScrollView
+        contentContainerStyle={{ flex: 1 }}
+        scrollEnabled={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+        }
+      >
       <View style={styles.cardContainer}>
         {profiles.slice(0, 2).reverse().map((profile, index) => (
           <SwipeCard
             key={profile.id}
             profile={profile}
             isTop={index === profiles.slice(0, 2).length - 1}
-            onSwipe={(direction) => handleSwipe(profile.id, direction)}
+            onSwipe={(direction, isSuperLike) => handleSwipe(profile.id, direction, isSuperLike)}
             energy={energy.remaining}
+            isPremium={isPremium}
+            superLikeRemaining={superLikeRemaining}
           />
         ))}
       </View>
+      </ScrollView>
 
       {/* Match animation */}
       <MatchAnimation
@@ -187,6 +272,67 @@ export default function DiscoverScreen() {
           router.push(`/(tabs)/matches`);
         }}
       />
+
+      {/* Filters Modal */}
+      <Modal visible={showFilters} animationType="slide" transparent>
+        <View style={styles.filterOverlay}>
+          <View style={styles.filterModal}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filters</Text>
+              <TouchableOpacity onPress={() => setShowFilters(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>Age Range</Text>
+              <View style={styles.filterRow}>
+                <TextInput
+                  style={styles.filterInput}
+                  keyboardType="number-pad"
+                  value={filterAgeMin}
+                  onChangeText={setFilterAgeMin}
+                  placeholder="Min"
+                  placeholderTextColor={COLORS.textLight}
+                  maxLength={2}
+                />
+                <Text style={styles.filterDash}>-</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  keyboardType="number-pad"
+                  value={filterAgeMax}
+                  onChangeText={setFilterAgeMax}
+                  placeholder="Max"
+                  placeholderTextColor={COLORS.textLight}
+                  maxLength={2}
+                />
+              </View>
+            </View>
+
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>Max Distance (km)</Text>
+              <TextInput
+                style={styles.filterInput}
+                keyboardType="number-pad"
+                value={filterDistance}
+                onChangeText={setFilterDistance}
+                placeholder="Distance"
+                placeholderTextColor={COLORS.textLight}
+                maxLength={4}
+              />
+            </View>
+
+            <View style={styles.filterActions}>
+              <TouchableOpacity style={styles.resetBtn} onPress={handleResetFilters}>
+                <Text style={styles.resetBtnText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.applyBtn} onPress={handleApplyFilters}>
+                <Text style={styles.applyBtnText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -196,11 +342,15 @@ function SwipeCard({
   isTop,
   onSwipe,
   energy,
+  isPremium,
+  superLikeRemaining,
 }: {
   profile: Profile;
   isTop: boolean;
-  onSwipe: (direction: 'like' | 'pass') => void;
+  onSwipe: (direction: 'like' | 'pass', isSuperLike?: boolean) => void;
   energy: number;
+  isPremium: boolean;
+  superLikeRemaining: number;
 }) {
   const position = useRef(new Animated.ValueXY()).current;
 
@@ -216,6 +366,8 @@ function SwipeCard({
           doSwipe('like');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
           doSwipe('pass');
+        } else if (gesture.dy < -SWIPE_UP_THRESHOLD) {
+          doSuperLike();
         } else {
           resetPosition();
         }
@@ -224,7 +376,7 @@ function SwipeCard({
   ).current;
 
   const doSwipe = (direction: 'like' | 'pass') => {
-    if (energy <= 0) {
+    if (!isPremium && energy <= 0) {
       if (Platform.OS === 'web') {
         window.alert('No energy! You have no swipes left today.');
       }
@@ -237,6 +389,23 @@ function SwipeCard({
       duration: 300,
       useNativeDriver: false,
     }).start(() => onSwipe(direction));
+  };
+
+  const doSuperLike = () => {
+    if (superLikeRemaining <= 0) {
+      if (Platform.OS === 'web') {
+        window.alert('No super likes remaining today!');
+      } else {
+        Alert.alert('No Super Likes', 'You have no super likes remaining today.');
+      }
+      resetPosition();
+      return;
+    }
+    Animated.timing(position, {
+      toValue: { x: 0, y: -height },
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => onSwipe('like', true));
   };
 
   const resetPosition = () => {
@@ -260,6 +429,12 @@ function SwipeCard({
 
   const passOpacity = position.x.interpolate({
     inputRange: [-width / 5, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const superLikeOpacity = position.y.interpolate({
+    inputRange: [-height / 5, 0],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
@@ -293,7 +468,7 @@ function SwipeCard({
       {/* Gradient overlay at bottom */}
       <View style={styles.gradientOverlay} />
 
-      {/* Like/Pass stamp overlays */}
+      {/* Like/Pass/Super Like stamp overlays */}
       {isTop && (
         <>
           <Animated.View style={[styles.stampContainer, styles.likeStamp, { opacity: likeOpacity }]}>
@@ -301,6 +476,9 @@ function SwipeCard({
           </Animated.View>
           <Animated.View style={[styles.stampContainer, styles.passStamp, { opacity: passOpacity }]}>
             <Text style={[styles.stampText, styles.passStampText]}>NOPE</Text>
+          </Animated.View>
+          <Animated.View style={[styles.stampContainer, styles.superLikeStamp, { opacity: superLikeOpacity }]}>
+            <Text style={[styles.stampText, styles.superLikeStampText]}>SUPER LIKE</Text>
           </Animated.View>
         </>
       )}
@@ -352,10 +530,14 @@ function SwipeCard({
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.actionBtn, styles.superLikeBtn]}
-            onPress={() => doSwipe('like')}
+            style={[styles.actionBtn, styles.superLikeActionBtn]}
+            onPress={doSuperLike}
           >
             <Ionicons name="star" size={24} color="#4FC3F7" />
+            {/* Super like remaining badge */}
+            <View style={styles.superLikeBadge}>
+              <Text style={styles.superLikeBadgeText}>{superLikeRemaining}</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -494,6 +676,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.danger,
     transform: [{ rotate: '15deg' }],
   },
+  superLikeStamp: {
+    left: '50%',
+    marginLeft: -80,
+    top: 80,
+    borderColor: '#4FC3F7',
+    transform: [{ rotate: '0deg' }],
+  },
   stampText: {
     fontSize: 36,
     fontWeight: '900',
@@ -502,6 +691,9 @@ const styles = StyleSheet.create({
   },
   passStampText: {
     color: COLORS.danger,
+  },
+  superLikeStampText: {
+    color: '#4FC3F7',
   },
   // Reputation
   repBadge: {
@@ -606,12 +798,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(231,76,60,0.2)',
   },
-  superLikeBtn: {
+  superLikeActionBtn: {
     width: 48,
     height: 48,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(79,195,247,0.2)',
+    position: 'relative',
+  },
+  superLikeBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#4FC3F7',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  superLikeBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   likeActionBtn: {
     width: 60,
@@ -619,5 +830,100 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 1,
     borderColor: 'rgba(255,107,107,0.2)',
+  },
+  // Filter button
+  filterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  // Filter modal
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  filterModal: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 20,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  filterTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  filterGroup: {
+    gap: 8,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: COLORS.text,
+    backgroundColor: COLORS.backgroundDark,
+  },
+  filterDash: {
+    fontSize: 18,
+    color: COLORS.textLight,
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  resetBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resetBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textLight,
+  },
+  applyBtn: {
+    flex: 2,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  applyBtnText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });

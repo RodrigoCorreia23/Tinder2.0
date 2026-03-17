@@ -69,9 +69,14 @@ export default function OnboardingScreen() {
         await userService.updateInterests(selectedInterests);
       }
 
-      // Upload photos
+      // Upload photos using file upload service
       for (const photoUri of photos) {
-        await userService.addPhoto(photoUri);
+        try {
+          await userService.uploadPhoto(photoUri);
+        } catch {
+          // Fallback to addPhoto with URI if upload fails
+          await userService.addPhoto(photoUri);
+        }
       }
 
       // Request location

@@ -9,12 +9,15 @@ interface SwipeState {
   lastMatch: { matchId: string; userId: string } | null;
   receivedLikes: ReceivedLike[];
   likesLoading: boolean;
+  superLikeRemaining: number;
+  superLikeResetAt: string | null;
 
   loadProfiles: () => Promise<void>;
   loadEnergy: () => Promise<void>;
-  swipe: (targetUserId: string, direction: 'like' | 'pass') => Promise<boolean>;
+  swipe: (targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) => Promise<boolean>;
   clearMatch: () => void;
   loadReceivedLikes: () => Promise<void>;
+  loadSuperLikeStatus: () => Promise<void>;
 }
 
 export const useSwipeStore = create<SwipeState>((set, get) => ({
@@ -24,6 +27,8 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
   lastMatch: null,
   receivedLikes: [],
   likesLoading: false,
+  superLikeRemaining: 1,
+  superLikeResetAt: null,
 
   loadProfiles: async () => {
     set({ isLoading: true });
@@ -43,8 +48,17 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     set({ energy });
   },
 
-  swipe: async (targetUserId, direction) => {
-    const result = await matchService.swipe(targetUserId, direction);
+  loadSuperLikeStatus: async () => {
+    try {
+      const status = await matchService.getSuperLikeStatus();
+      set({ superLikeRemaining: status.remaining, superLikeResetAt: status.resetAt });
+    } catch {
+      // If endpoint not available yet, keep defaults
+    }
+  },
+
+  swipe: async (targetUserId, direction, isSuperLike) => {
+    const result = await matchService.swipe(targetUserId, direction, isSuperLike);
 
     // Remove swiped profile from stack AND from received likes
     set((state) => ({
@@ -55,6 +69,10 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
         remaining: result.energyRemaining,
         resetAt: result.energyResetAt,
       },
+      // Decrement super like count locally on super like
+      superLikeRemaining: isSuperLike
+        ? Math.max(0, state.superLikeRemaining - 1)
+        : state.superLikeRemaining,
     }));
 
     if (result.matched && result.matchId) {

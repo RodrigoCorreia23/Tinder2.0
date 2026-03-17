@@ -16,14 +16,20 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/utils/constants';
 import { useSwipeStore } from '@/store/swipeStore';
+import { useAuthStore } from '@/store/authStore';
 import { ReceivedLike } from '@/types';
+import * as userService from '@/services/user.service';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 48) / 2;
 
 export default function LikesScreen() {
   const { receivedLikes: likes, likesLoading: loading, loadReceivedLikes } = useSwipeStore();
+  const { user, refreshUser } = useAuthStore();
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [activatingPremium, setActivatingPremium] = useState(false);
+
+  const isPremium = user?.isPremium === true;
 
   // Reload likes every time the tab is focused
   useFocusEffect(
@@ -33,7 +39,31 @@ export default function LikesScreen() {
   );
 
   const handleCardPress = () => {
-    setShowPremiumModal(true);
+    if (!isPremium) {
+      setShowPremiumModal(true);
+    }
+  };
+
+  const handleActivatePremium = async () => {
+    setActivatingPremium(true);
+    try {
+      await userService.activatePremium();
+      await refreshUser();
+      setShowPremiumModal(false);
+      if (Platform.OS === 'web') {
+        window.alert('Premium activated! You can now see who liked you.');
+      } else {
+        Alert.alert('Premium Activated', 'You can now see who liked you!');
+      }
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Coming soon! Premium subscriptions will be available in a future update.');
+      } else {
+        Alert.alert('Coming Soon', 'Premium subscriptions will be available in a future update.');
+      }
+    } finally {
+      setActivatingPremium(false);
+    }
   };
 
   const renderLikeCard = ({ item }: { item: ReceivedLike }) => {
@@ -42,16 +72,30 @@ export default function LikesScreen() {
 
     return (
       <TouchableOpacity style={styles.card} onPress={handleCardPress} activeOpacity={0.9}>
-        {/* Blurred photo */}
+        {/* Photo - blurred for non-premium, clear for premium */}
         <View style={styles.photoContainer}>
-          <Image source={{ uri: photoUrl }} style={styles.photo} blurRadius={Platform.OS === 'web' ? 20 : 25} />
+          <Image
+            source={{ uri: photoUrl }}
+            style={styles.photo}
+            blurRadius={isPremium ? 0 : (Platform.OS === 'web' ? 20 : 25)}
+          />
 
-          {/* Lock icon overlay */}
-          <View style={styles.lockOverlay}>
-            <View style={styles.lockCircle}>
-              <Ionicons name="lock-closed" size={24} color={COLORS.primary} />
+          {/* Lock icon overlay - only for non-premium */}
+          {!isPremium && (
+            <View style={styles.lockOverlay}>
+              <View style={styles.lockCircle}>
+                <Ionicons name="lock-closed" size={24} color={COLORS.primary} />
+              </View>
             </View>
-          </View>
+          )}
+
+          {/* Super Like badge */}
+          {item.isSuperLike && (
+            <View style={styles.superLikeBadge}>
+              <Ionicons name="star" size={12} color="#fff" />
+              <Text style={styles.superLikeBadgeText}>Super Like</Text>
+            </View>
+          )}
 
           {/* Liked time badge */}
           <View style={styles.timeBadge}>
@@ -60,12 +104,19 @@ export default function LikesScreen() {
           </View>
         </View>
 
-        {/* Blurred name */}
+        {/* Name - hidden for non-premium, visible for premium */}
         <View style={styles.nameContainer}>
-          <Text style={styles.name}>
-            {'●●●●●●●'}
-          </Text>
-          <Text style={styles.age}>, {item.age}</Text>
+          {isPremium ? (
+            <>
+              <Text style={styles.nameClear}>{item.firstName}</Text>
+              <Text style={styles.age}>, {item.age}</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.name}>{'●●●●●●●'}</Text>
+              <Text style={styles.age}>, {item.age}</Text>
+            </>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -90,7 +141,25 @@ export default function LikesScreen() {
         <Text style={styles.headerTitle}>
           {likes.length === 1 ? 'person likes you' : 'people like you'}
         </Text>
+        {isPremium && (
+          <View style={styles.premiumBadgeSmall}>
+            <Ionicons name="star" size={12} color="#FFD700" />
+            <Text style={styles.premiumBadgeSmallText}>Premium</Text>
+          </View>
+        )}
       </View>
+
+      {/* Non-premium banner */}
+      {!isPremium && likes.length > 0 && (
+        <TouchableOpacity
+          style={styles.upgradeBanner}
+          onPress={() => setShowPremiumModal(true)}
+        >
+          <Ionicons name="star" size={18} color="#FFD700" />
+          <Text style={styles.upgradeBannerText}>Upgrade to Spark Premium to see who likes you</Text>
+          <Ionicons name="chevron-forward" size={16} color="#FFD700" />
+        </TouchableOpacity>
+      )}
 
       {likes.length === 0 ? (
         <View style={styles.center}>
@@ -139,12 +208,12 @@ export default function LikesScreen() {
                 <Text style={styles.featureText}>Unlimited swipes</Text>
               </View>
               <View style={styles.featureRow}>
-                <Ionicons name="arrow-undo" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>Rewind last swipe</Text>
+                <Ionicons name="star" size={20} color={COLORS.primary} />
+                <Text style={styles.featureText}>5 Super Likes per day</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="location" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>Extended range (500m)</Text>
+                <Text style={styles.featureText}>Extended map range (500m)</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="rocket" size={20} color={COLORS.primary} />
@@ -154,17 +223,13 @@ export default function LikesScreen() {
 
             {/* CTA */}
             <TouchableOpacity
-              style={styles.premiumButton}
-              onPress={() => {
-                setShowPremiumModal(false);
-                if (Platform.OS === 'web') {
-                  window.alert('Coming soon! Premium subscriptions will be available in a future update.');
-                } else {
-                  Alert.alert('Coming Soon', 'Premium subscriptions will be available in a future update.');
-                }
-              }}
+              style={[styles.premiumButton, activatingPremium && { opacity: 0.6 }]}
+              onPress={handleActivatePremium}
+              disabled={activatingPremium}
             >
-              <Text style={styles.premiumButtonText}>Upgrade to Premium</Text>
+              <Text style={styles.premiumButtonText}>
+                {activatingPremium ? 'Activating...' : 'Upgrade to Premium'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -228,6 +293,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.text,
     fontWeight: '500',
+    flex: 1,
+  },
+  premiumBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF8F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFE0A0',
+  },
+  premiumBadgeSmallText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#B8860B',
+  },
+  upgradeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF8F0',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFE0A0',
+  },
+  upgradeBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#B8860B',
   },
   grid: {
     padding: 16,
@@ -278,6 +379,23 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  superLikeBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#4FC3F7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  superLikeBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
   timeBadge: {
     position: 'absolute',
     bottom: 8,
@@ -305,6 +423,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.textLight,
     letterSpacing: 2,
+  },
+  nameClear: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.text,
   },
   age: {
     fontSize: 15,

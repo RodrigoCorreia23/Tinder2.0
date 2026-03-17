@@ -83,6 +83,11 @@ export default function MatchesScreen() {
               </Text>
             </View>
           )}
+          {match.otherUser.isVerified && (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={16} color="#4FC3F7" />
+            </View>
+          )}
         </View>
         <Text style={styles.newMatchName} numberOfLines={1}>
           {match.otherUser.firstName}
@@ -127,11 +132,21 @@ export default function MatchesScreen() {
               </Text>
             </View>
           )}
+          {item.otherUser.isVerified && (
+            <View style={styles.verifiedBadgeConvo}>
+              <Ionicons name="checkmark-circle" size={18} color="#4FC3F7" />
+            </View>
+          )}
         </View>
 
         <View style={styles.conversationInfo}>
           <View style={styles.nameRow}>
-            <Text style={styles.conversationName}>{item.otherUser.firstName}</Text>
+            <View style={styles.nameWithBadge}>
+              <Text style={styles.conversationName}>{item.otherUser.firstName}</Text>
+              {item.otherUser.isVerified && (
+                <Ionicons name="checkmark-circle" size={14} color="#4FC3F7" />
+              )}
+            </View>
             {item.lastMessage && (
               <Text style={styles.timeText}>
                 {formatTime(item.lastMessage.createdAt)}
@@ -382,5 +397,24 @@ const styles = StyleSheet.create({
   emptySubText: {
     fontSize: 14,
     color: COLORS.textLight,
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+  },
+  verifiedBadgeConvo: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    backgroundColor: '#fff',
+    borderRadius: 9,
+  },
+  nameWithBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
 });

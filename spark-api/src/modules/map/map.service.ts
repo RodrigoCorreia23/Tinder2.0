@@ -1,6 +1,7 @@
 import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
 import { randomizeCoordinates } from '../../shared/utils/geo';
+import { getBlockedIds } from '../block/block.service';
 
 const FREE_RADIUS_METERS = 1000;
 const PREMIUM_RADIUS_METERS = 5000;
@@ -45,13 +46,16 @@ export async function getNearbyUsers(
 
   const radiusMeters = user.isPremium ? PREMIUM_RADIUS_METERS : FREE_RADIUS_METERS;
 
+  // Get blocked user IDs (both directions)
+  const blockedIds = await getBlockedIds(userId);
+
   // Find users within radius matching preferences
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
 
   const nearbyUsers = await prisma.user.findMany({
     where: {
-      id: { not: userId },
+      id: { notIn: [userId, ...blockedIds] },
       isActive: true,
       gender: { in: user.lookingFor },
       lookingFor: { hasSome: [user.gender] },

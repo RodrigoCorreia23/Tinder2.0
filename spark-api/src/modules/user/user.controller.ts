@@ -103,3 +103,31 @@ export async function updatePushToken(req: AuthRequest, res: Response, next: Nex
     next(err);
   }
 }
+
+export async function deleteAccount(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    await userService.deleteAccount(req.userId!);
+    res.json({ message: 'Account deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function requestVerification(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await userService.requestVerification(req.userId!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function activatePremium(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { durationDays } = req.body;
+    const result = await userService.activatePremium(req.userId!, durationDays);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}

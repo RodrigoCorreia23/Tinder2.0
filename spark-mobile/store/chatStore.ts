@@ -13,6 +13,7 @@ interface ChatState {
   sendMessage: (matchId: string, content: string) => Promise<void>;
   addMessage: (matchId: string, message: Message) => void;
   markAsRead: (matchId: string) => Promise<void>;
+  markMessagesAsReadLocally: (matchId: string, readBy: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -61,5 +62,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   markAsRead: async (matchId) => {
     await chatService.markAsRead(matchId);
+  },
+
+  markMessagesAsReadLocally: (matchId, readBy) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [matchId]: (state.messages[matchId] || []).map((msg) =>
+          msg.senderId !== readBy ? { ...msg, isRead: true } : msg
+        ),
+      },
+    }));
   },
 }));

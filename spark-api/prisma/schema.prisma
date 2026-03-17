@@ -37,6 +37,10 @@ model User {
   energyRemaining Int       @default(25) @map("energy_remaining")
   energyResetAt   DateTime? @map("energy_reset_at")
 
+  // Super Likes
+  superLikesUsedToday Int       @default(0) @map("super_likes_used_today")
+  superLikeResetAt    DateTime? @map("super_like_reset_at")
+
   // Location (stored as lat/lng, PostGIS queries done via raw SQL)
   latitude          Float?
   longitude         Float?
@@ -63,6 +67,10 @@ model User {
   reputationEvents ReputationEvent[]
   notifications    Notification[]
   dateAvailability DateAvailability[]
+  blocksGiven      Block[]  @relation("BlocksGiven")
+  blocksReceived   Block[]  @relation("BlocksReceived")
+  reportsGiven     Report[] @relation("ReportsGiven")
+  reportsReceived  Report[] @relation("ReportsReceived")
 
   @@map("users")
 }
@@ -113,8 +121,9 @@ model Swipe {
   id        String   @id @default(uuid())
   swiperId  String   @map("swiper_id")
   swipedId  String   @map("swiped_id")
-  direction String   // 'like' or 'pass'
-  createdAt DateTime @default(now()) @map("created_at")
+  direction   String   // 'like' or 'pass'
+  isSuperLike Boolean @default(false) @map("is_super_like")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   swiper User @relation("SwipesGiven", fields: [swiperId], references: [id], onDelete: Cascade)
   swiped User @relation("SwipesReceived", fields: [swipedId], references: [id], onDelete: Cascade)
@@ -283,4 +292,38 @@ model Notification {
 
   @@index([userId, isRead, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+// ============================================
+// BLOCKS
+// ============================================
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlocksGiven", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+// ============================================
+// REPORTS
+// ============================================
+model Report {
+  id         String   @id @default(uuid())
+  reporterId String   @map("reporter_id")
+  reportedId String   @map("reported_id")
+  reason     String
+  details    String?
+  status     String   @default("pending")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  reporter User @relation("ReportsGiven", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("ReportsReceived", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
 }

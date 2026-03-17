@@ -15,6 +15,8 @@ export interface User {
   latitude: number | null;
   longitude: number | null;
   isVerified: boolean;
+  isPremium?: boolean;
+  premiumUntil?: string | null;
   photos: Photo[];
   interests: Interest[];
 }
@@ -50,6 +52,7 @@ export interface Match {
     id: string;
     firstName: string;
     photos: Photo[];
+    isVerified?: boolean;
   };
   compatibilityScore: number;
   expiresAt: string | null;
@@ -95,6 +98,7 @@ export interface ReceivedLike {
   photos: Photo[];
   interests: Interest[];
   likedAt: string;
+  isSuperLike?: boolean;
 }
 
 export interface DatePlan {

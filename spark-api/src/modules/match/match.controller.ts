@@ -31,6 +31,15 @@ export async function unmatch(req: AuthRequest, res: Response, next: NextFunctio
   }
 }
 
+export async function getUnreadCount(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await matchService.getUnreadCount(req.userId!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getCompatibility(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const data = await matchService.getCompatibility(req.params.matchId, req.userId!);

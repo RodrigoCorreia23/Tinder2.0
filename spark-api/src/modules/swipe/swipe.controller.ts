@@ -13,8 +13,8 @@ export async function discover(req: AuthRequest, res: Response, next: NextFuncti
 
 export async function createSwipe(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const { targetUserId, direction } = req.body;
-    const result = await swipeService.createSwipe(req.userId!, targetUserId, direction);
+    const { targetUserId, direction, isSuperLike } = req.body;
+    const result = await swipeService.createSwipe(req.userId!, targetUserId, direction, isSuperLike);
     res.json(result);
   } catch (err) {
     next(err);
@@ -34,6 +34,15 @@ export async function getReceivedLikes(req: AuthRequest, res: Response, next: Ne
   try {
     const likes = await swipeService.getReceivedLikes(req.userId!);
     res.json(likes);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getSuperLikeStatus(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const status = await swipeService.getSuperLikeStatus(req.userId!);
+    res.json(status);
   } catch (err) {
     next(err);
   }

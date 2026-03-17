@@ -6,8 +6,8 @@ export async function getDiscover() {
   return res.data as Profile[];
 }
 
-export async function swipe(targetUserId: string, direction: 'like' | 'pass') {
-  const res = await api.post('/swipes', { targetUserId, direction });
+export async function swipe(targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) {
+  const res = await api.post('/swipes', { targetUserId, direction, isSuperLike });
   return res.data as {
     matched: boolean;
     matchId?: string;
@@ -19,6 +19,11 @@ export async function swipe(targetUserId: string, direction: 'like' | 'pass') {
 export async function getEnergy() {
   const res = await api.get('/swipes/energy');
   return res.data as Energy;
+}
+
+export async function getSuperLikeStatus() {
+  const res = await api.get('/swipes/super-like-status');
+  return res.data as { remaining: number; resetAt: string | null };
 }
 
 export async function getMatches() {

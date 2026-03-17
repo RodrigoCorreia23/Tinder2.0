@@ -1,9 +1,12 @@
 import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
 import { getIO } from '../../socket';
+import { getBlockedIds } from '../block/block.service';
 
 const MAX_ENERGY = 25;
 const MATCH_EXPIRY_HOURS = 48;
+const FREE_SUPER_LIKE_LIMIT = 1;
+const PREMIUM_SUPER_LIKE_LIMIT = 5;
 
 export async function getDiscoverProfiles(userId: string) {
   const user = await prisma.user.findUnique({
@@ -28,7 +31,11 @@ export async function getDiscoverProfiles(userId: string) {
     where: { swiperId: userId },
     select: { swipedId: true },
   });
-  const excludeIds = [userId, ...swipedIds.map((s) => s.swipedId)];
+
+  // Get blocked user IDs (both directions)
+  const blockedIds = await getBlockedIds(userId);
+
+  const excludeIds = [userId, ...swipedIds.map((s) => s.swipedId), ...blockedIds];
 
   // Calculate age range dates
   const now = new Date();
@@ -95,17 +102,33 @@ export async function getDiscoverProfiles(userId: string) {
 export async function createSwipe(
   userId: string,
   targetUserId: string,
-  direction: 'like' | 'pass'
+  direction: 'like' | 'pass',
+  isSuperLike?: boolean
 ) {
-  // Check energy
+  // Fetch user with premium and super like fields
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { energyRemaining: true, energyResetAt: true },
+    select: {
+      energyRemaining: true,
+      energyResetAt: true,
+      isPremium: true,
+      premiumUntil: true,
+      superLikesUsedToday: true,
+      superLikeResetAt: true,
+    },
   });
 
   if (!user) throw new AppError('User not found', 404);
-  if (user.energyRemaining <= 0) {
-    throw new AppError('No energy remaining. Come back later!', 429);
+
+  // Determine if user has active premium
+  const now = new Date();
+  const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+
+  // Premium users skip energy check (unlimited swipes)
+  if (!hasActivePremium) {
+    if (user.energyRemaining <= 0) {
+      throw new AppError('No energy remaining. Come back later!', 429);
+    }
   }
 
   // Check for duplicate swipe
@@ -116,23 +139,77 @@ export async function createSwipe(
     throw new AppError('Already swiped on this user', 409);
   }
 
-  // Create swipe and deduct energy
-  const updateData: any = { energyRemaining: { decrement: 1 } };
+  // Super Like validation
+  if (isSuperLike && direction === 'like') {
+    let currentSuperLikesUsed = user.superLikesUsedToday;
 
-  // Start 24h timer on first swipe if not already running
-  if (!user.energyResetAt) {
-    updateData.energyResetAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Reset counter if superLikeResetAt is in the past
+    if (user.superLikeResetAt && user.superLikeResetAt < now) {
+      currentSuperLikesUsed = 0;
+    }
+
+    const limit = hasActivePremium ? PREMIUM_SUPER_LIKE_LIMIT : FREE_SUPER_LIKE_LIMIT;
+    if (currentSuperLikesUsed >= limit) {
+      throw new AppError('No super likes remaining today', 429);
+    }
   }
 
-  const [swipe] = await prisma.$transaction([
-    prisma.swipe.create({
-      data: { swiperId: userId, swipedId: targetUserId, direction },
-    }),
-    prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-    }),
-  ]);
+  // Build user update data
+  const updateData: any = {};
+
+  // Only deduct energy for non-premium users
+  if (!hasActivePremium) {
+    updateData.energyRemaining = { decrement: 1 };
+
+    // Start 24h timer on first swipe if not already running
+    if (!user.energyResetAt) {
+      updateData.energyResetAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  // Super Like updates
+  if (isSuperLike && direction === 'like') {
+    // Reset counter if needed
+    if (user.superLikeResetAt && user.superLikeResetAt < now) {
+      updateData.superLikesUsedToday = 1; // reset to 0 then increment = 1
+    } else {
+      updateData.superLikesUsedToday = { increment: 1 };
+    }
+
+    // Set superLikeResetAt to next midnight if not set or expired
+    if (!user.superLikeResetAt || user.superLikeResetAt < now) {
+      const nextMidnight = new Date(now);
+      nextMidnight.setDate(nextMidnight.getDate() + 1);
+      nextMidnight.setHours(0, 0, 0, 0);
+      updateData.superLikeResetAt = nextMidnight;
+    }
+  }
+
+  // Create swipe data
+  const swipeData: any = {
+    swiperId: userId,
+    swipedId: targetUserId,
+    direction,
+  };
+  if (isSuperLike && direction === 'like') {
+    swipeData.isSuperLike = true;
+  }
+
+  const transactionOps: any[] = [
+    prisma.swipe.create({ data: swipeData }),
+  ];
+
+  // Only update user if there are fields to update
+  if (Object.keys(updateData).length > 0) {
+    transactionOps.push(
+      prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+      })
+    );
+  }
+
+  const [swipe] = await prisma.$transaction(transactionOps);
 
   // Check for mutual like
   let matched = false;
@@ -152,6 +229,7 @@ export async function createSwipe(
       const io = getIO();
       io.to(`user:${targetUserId}`).emit('new_like', {
         message: 'Someone liked you!',
+        isSuperLike: isSuperLike || false,
       });
     }
 
@@ -212,7 +290,46 @@ export async function getEnergy(userId: string) {
   };
 }
 
+export async function getSuperLikeStatus(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      superLikesUsedToday: true,
+      superLikeResetAt: true,
+      isPremium: true,
+      premiumUntil: true,
+    },
+  });
+
+  if (!user) throw new AppError('User not found', 404);
+
+  const now = new Date();
+  const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+  const limit = hasActivePremium ? PREMIUM_SUPER_LIKE_LIMIT : FREE_SUPER_LIKE_LIMIT;
+
+  let used = user.superLikesUsedToday;
+  // If reset time has passed, counter is effectively 0
+  if (user.superLikeResetAt && user.superLikeResetAt < now) {
+    used = 0;
+  }
+
+  return {
+    remaining: Math.max(0, limit - used),
+    resetAt: user.superLikeResetAt?.toISOString() || null,
+  };
+}
+
 export async function getReceivedLikes(userId: string) {
+  // Check if user has active premium
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isPremium: true, premiumUntil: true },
+  });
+
+  const now = new Date();
+  const hasActivePremium =
+    currentUser?.isPremium && currentUser?.premiumUntil && currentUser.premiumUntil > now;
+
   // Find users who liked me but I haven't swiped on yet
   const mySwipedIds = await prisma.swipe.findMany({
     where: { swiperId: userId },
@@ -256,6 +373,10 @@ export async function getReceivedLikes(userId: string) {
       const age = Math.floor(
         (Date.now() - u.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
       );
+
+      // For non-premium users, only show first photo and blur it
+      const photos = hasActivePremium ? u.photos : u.photos.slice(0, 1);
+
       return {
         id: u.id,
         firstName: u.firstName,
@@ -263,7 +384,9 @@ export async function getReceivedLikes(userId: string) {
         gender: u.gender,
         bio: u.bio,
         reputationScore: u.reputationScore,
-        photos: u.photos,
+        photos,
+        isBlurred: !hasActivePremium,
+        isSuperLike: (like as any).isSuperLike || false,
         interests: u.interests.map((ui) => ui.interest),
         likedAt: like.createdAt,
       };

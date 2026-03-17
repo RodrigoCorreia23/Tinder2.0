@@ -8,6 +8,8 @@ import matchRoutes from './modules/match/match.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import mapRoutes from './modules/map/map.routes';
 import plannerRoutes from './modules/date-planner/planner.routes';
+import blockRoutes from './modules/block/block.routes';
+import { authenticate } from './modules/auth/auth.middleware';
 
 const app = express();
 
@@ -28,6 +30,7 @@ app.use('/api/matches', matchRoutes);
 app.use('/api/map', mapRoutes);
 app.use('/api/date-plans', plannerRoutes);
 app.use('/api/matches', chatRoutes);
+app.use('/api/blocks', authenticate, blockRoutes);
 
 // Error handling
 app.use(errorHandler);

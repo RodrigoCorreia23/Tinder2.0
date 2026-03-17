@@ -39,3 +39,30 @@ export async function getReputation() {
   const res = await api.get('/users/me/reputation');
   return res.data;
 }
+
+export async function deleteAccount() {
+  await api.delete('/users/me');
+}
+
+export async function uploadPhoto(uri: string) {
+  const formData = new FormData();
+  formData.append('photo', {
+    uri,
+    type: 'image/jpeg',
+    name: 'photo.jpg',
+  } as any);
+  const res = await api.post('/users/me/photos', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+export async function activatePremium() {
+  const res = await api.post('/users/me/premium');
+  return res.data;
+}
+
+export async function requestVerification() {
+  const res = await api.post('/users/me/verify');
+  return res.data;
+}

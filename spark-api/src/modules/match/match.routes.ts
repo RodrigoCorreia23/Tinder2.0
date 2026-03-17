@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', matchController.getMatches);
+router.get('/unread-count', matchController.getUnreadCount);
 router.get('/:matchId', matchController.getMatch);
 router.delete('/:matchId', matchController.unmatch);
 router.get('/:matchId/compatibility', matchController.getCompatibility);

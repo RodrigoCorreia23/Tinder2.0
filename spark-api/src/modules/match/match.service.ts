@@ -100,6 +100,21 @@ export async function unmatch(matchId: string, userId: string) {
   });
 }
 
+export async function getUnreadCount(userId: string) {
+  const count = await prisma.message.count({
+    where: {
+      senderId: { not: userId },
+      isRead: false,
+      match: {
+        status: 'active',
+        OR: [{ user1Id: userId }, { user2Id: userId }],
+      },
+    },
+  });
+
+  return { unreadCount: count };
+}
+
 export async function getCompatibility(matchId: string, userId: string) {
   const match = await prisma.match.findUnique({
     where: { id: matchId },

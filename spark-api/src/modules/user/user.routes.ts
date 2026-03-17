@@ -34,6 +34,15 @@ router.put('/me/interests', validateRequest(updateInterestsSchema), userControll
 // Push token
 router.put('/me/push-token', userController.updatePushToken);
 
+// Delete account
+router.delete('/me', userController.deleteAccount);
+
+// Verification
+router.post('/me/verify', userController.requestVerification);
+
+// Premium
+router.post('/me/premium', userController.activatePremium);
+
 // Public profile
 router.get('/:id', userController.getUser);
 
