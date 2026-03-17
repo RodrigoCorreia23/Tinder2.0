@@ -1,7 +1,8 @@
 import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
-import { getIO } from '../../socket';
+import { getIO, isUserOnline } from '../../socket';
 import { clampReputation, REPUTATION_EVENTS } from '../../shared/utils/scoring';
+import { sendPushToUser } from '../../shared/utils/pushNotifications';
 
 const MATCH_EXPIRY_HOURS = 48;
 
@@ -133,6 +134,22 @@ export async function sendMessage(matchId: string, senderId: string, content: st
     matchId,
     messagePreview: content.substring(0, 100),
   });
+
+  // Send push notification if the recipient is offline
+  const recipientOnline = await isUserOnline(otherUserId);
+  if (!recipientOnline) {
+    const senderUser = await prisma.user.findUnique({
+      where: { id: senderId },
+      select: { firstName: true },
+    });
+    const senderName = senderUser?.firstName || 'Someone';
+    sendPushToUser(
+      otherUserId,
+      `New message from ${senderName}`,
+      content.substring(0, 100),
+      { type: 'new_message', matchId }
+    );
+  }
 
   return message;
 }

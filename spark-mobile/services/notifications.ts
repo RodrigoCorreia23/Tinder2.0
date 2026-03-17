@@ -1,11 +1,17 @@
 import { Platform } from 'react-native';
 
 let expoPushNotifications: any = null;
+let expoConstants: any = null;
 if (Platform.OS !== 'web') {
   try {
     expoPushNotifications = require('expo-notifications');
   } catch {
     console.warn('[NOTIFICATIONS] expo-notifications not available');
+  }
+  try {
+    expoConstants = require('expo-constants').default;
+  } catch {
+    console.warn('[NOTIFICATIONS] expo-constants not available');
   }
 }
 
@@ -93,5 +99,26 @@ export async function showNotification(title: string, body: string, data?: any) 
     });
   } catch (err) {
     console.error('[NOTIFICATIONS] Show error:', err);
+  }
+}
+
+/**
+ * Get the Expo Push Token for this device.
+ * Returns null on web or if unable to obtain.
+ */
+export async function getExpoPushToken(): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') return null;
+    if (!expoPushNotifications) return null;
+
+    const projectId = expoConstants?.expoConfig?.extra?.eas?.projectId;
+    const tokenData = await expoPushNotifications.getExpoPushTokenAsync({
+      ...(projectId ? { projectId } : {}),
+    });
+
+    return tokenData?.data || null;
+  } catch (err) {
+    console.error('[NOTIFICATIONS] Failed to get push token:', err);
+    return null;
   }
 }

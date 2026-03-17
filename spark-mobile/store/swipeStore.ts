@@ -15,6 +15,7 @@ interface SwipeState {
   loadProfiles: () => Promise<void>;
   loadEnergy: () => Promise<void>;
   swipe: (targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) => Promise<boolean>;
+  rewind: () => Promise<boolean>;
   clearMatch: () => void;
   loadReceivedLikes: () => Promise<void>;
   loadSuperLikeStatus: () => Promise<void>;
@@ -80,6 +81,22 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       return true;
     }
     return false;
+  },
+
+  rewind: async () => {
+    try {
+      const result = await matchService.rewindLastSwipe();
+      set((state) => ({
+        profiles: [result.profile, ...state.profiles],
+        energy: {
+          ...state.energy,
+          remaining: result.energyRemaining,
+        },
+      }));
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   clearMatch: () => set({ lastMatch: null }),

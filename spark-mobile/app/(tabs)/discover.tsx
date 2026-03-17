@@ -44,6 +44,7 @@ export default function DiscoverScreen() {
     loadProfiles,
     loadEnergy,
     swipe,
+    rewind,
     clearMatch,
     loadReceivedLikes,
     loadSuperLikeStatus,
@@ -175,6 +176,21 @@ export default function DiscoverScreen() {
     }
   };
 
+  const handleRewind = async () => {
+    try {
+      const success = await rewind();
+      if (!success) {
+        if (Platform.OS === 'web') {
+          window.alert('Cannot rewind. Either no recent swipe or time expired.');
+        } else {
+          Alert.alert('Cannot Rewind', 'Either no recent swipe or the 5 minute window has expired.');
+        }
+      }
+    } catch {
+      // silent
+    }
+  };
+
   if (isLoading && !refreshing) {
     return (
       <View style={styles.center}>
@@ -208,8 +224,27 @@ export default function DiscoverScreen() {
   const energyPercent = (energy.remaining / energy.max) * 100;
   const energyColor = energyPercent > 50 ? COLORS.success : energyPercent > 20 ? COLORS.warning : COLORS.danger;
 
+  const isBoosted = user?.boostedUntil ? new Date(user.boostedUntil) > new Date() : false;
+  const isTraveling = user?.isTravelMode === true && !!user?.travelCity;
+
   return (
     <View style={styles.container}>
+      {/* Travel Mode banner */}
+      {isTraveling && (
+        <View style={styles.travelBanner}>
+          <Ionicons name="airplane" size={16} color="#fff" />
+          <Text style={styles.travelBannerText}>Traveling to {user?.travelCity}</Text>
+        </View>
+      )}
+
+      {/* Boosted badge */}
+      {isBoosted && (
+        <View style={styles.boostedBanner}>
+          <Ionicons name="rocket" size={16} color="#fff" />
+          <Text style={styles.boostedBannerText}>BOOSTED</Text>
+        </View>
+      )}
+
       {/* Energy bar */}
       <View style={styles.energyBar}>
         <View style={styles.energyLeft}>
@@ -248,6 +283,7 @@ export default function DiscoverScreen() {
             profile={profile}
             isTop={index === profiles.slice(0, 2).length - 1}
             onSwipe={(direction, isSuperLike) => handleSwipe(profile.id, direction, isSuperLike)}
+            onRewind={handleRewind}
             energy={energy.remaining}
             isPremium={isPremium}
             superLikeRemaining={superLikeRemaining}
@@ -341,6 +377,7 @@ function SwipeCard({
   profile,
   isTop,
   onSwipe,
+  onRewind,
   energy,
   isPremium,
   superLikeRemaining,
@@ -348,6 +385,7 @@ function SwipeCard({
   profile: Profile;
   isTop: boolean;
   onSwipe: (direction: 'like' | 'pass', isSuperLike?: boolean) => void;
+  onRewind: () => void;
   energy: number;
   isPremium: boolean;
   superLikeRemaining: number;
@@ -522,6 +560,15 @@ function SwipeCard({
       {/* Action buttons */}
       {isTop && (
         <View style={styles.actions}>
+          {isPremium && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.rewindActionBtn]}
+              onPress={onRewind}
+            >
+              <Ionicons name="arrow-undo" size={22} color="#FFD700" />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.actionBtn, styles.passActionBtn]}
             onPress={() => doSwipe('pass')}
@@ -824,12 +871,49 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  rewindActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.3)',
+  },
   likeActionBtn: {
     width: 60,
     height: 60,
     borderRadius: 30,
     borderWidth: 1,
     borderColor: 'rgba(255,107,107,0.2)',
+  },
+  // Travel & Boost banners
+  travelBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#5C6BC0',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  travelBannerText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  boostedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FF9800',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  boostedBannerText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   // Filter button
   filterBtn: {

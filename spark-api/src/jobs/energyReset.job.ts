@@ -1,5 +1,6 @@
 import prisma from '../config/database';
-import { getIO } from '../socket';
+import { getIO, isUserOnline } from '../socket';
+import { sendPushToUser } from '../shared/utils/pushNotifications';
 
 const MAX_ENERGY = 25;
 
@@ -32,6 +33,17 @@ export async function resetEnergy() {
   const io = getIO();
   for (const user of users) {
     io.to(`user:${user.id}`).emit('energy_refilled', { energy: MAX_ENERGY });
+
+    // Send push notification if user is offline
+    const online = await isUserOnline(user.id);
+    if (!online) {
+      sendPushToUser(
+        user.id,
+        'Energy refilled!',
+        'You have 25 new swipes. Go find your spark!',
+        { type: 'energy_refilled' }
+      );
+    }
   }
 
   if (users.length > 0) {

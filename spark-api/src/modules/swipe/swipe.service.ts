@@ -1,7 +1,8 @@
 import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
-import { getIO } from '../../socket';
+import { getIO, isUserOnline } from '../../socket';
 import { getBlockedIds } from '../block/block.service';
+import { sendPushToUser } from '../../shared/utils/pushNotifications';
 
 const MAX_ENERGY = 25;
 const MATCH_EXPIRY_HOURS = 48;
@@ -21,10 +22,21 @@ export async function getDiscoverProfiles(userId: string) {
       longitude: true,
       maxDistanceKm: true,
       reputationScore: true,
+      isTravelMode: true,
+      travelLatitude: true,
+      travelLongitude: true,
     },
   });
 
   if (!user) throw new AppError('User not found', 404);
+
+  // Use travel coordinates if travel mode is active
+  const effectiveLat = user.isTravelMode && user.travelLatitude != null
+    ? user.travelLatitude
+    : user.latitude;
+  const effectiveLng = user.isTravelMode && user.travelLongitude != null
+    ? user.travelLongitude
+    : user.longitude;
 
   // Get IDs of users already swiped
   const swipedIds = await prisma.swipe.findMany({
@@ -64,6 +76,7 @@ export async function getDiscoverProfiles(userId: string) {
       isVerified: true,
       latitude: true,
       longitude: true,
+      boostedUntil: true,
       photos: { orderBy: { position: 'asc' } },
       interests: { include: { interest: true } },
     },
@@ -72,16 +85,18 @@ export async function getDiscoverProfiles(userId: string) {
   });
 
   // Enrich with age and distance, filter by distance
-  return candidates
+  const enriched = candidates
     .map((c) => {
       const age = Math.floor(
         (Date.now() - c.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
       );
 
       let distance: number | null = null;
-      if (user.latitude && user.longitude && c.latitude && c.longitude) {
-        distance = haversineKm(user.latitude, user.longitude, c.latitude, c.longitude);
+      if (effectiveLat && effectiveLng && c.latitude && c.longitude) {
+        distance = haversineKm(effectiveLat, effectiveLng, c.latitude, c.longitude);
       }
+
+      const isBoosted = c.boostedUntil ? c.boostedUntil > now : false;
 
       return {
         id: c.id,
@@ -94,9 +109,17 @@ export async function getDiscoverProfiles(userId: string) {
         distance: distance ? Math.round(distance) : null,
         photos: c.photos,
         interests: c.interests.map((ui) => ui.interest),
+        isBoosted,
       };
     })
     .filter((c) => c.distance === null || c.distance <= user.maxDistanceKm);
+
+  // Sort: boosted users first, then by reputation
+  return enriched.sort((a, b) => {
+    if (a.isBoosted && !b.isBoosted) return -1;
+    if (!a.isBoosted && b.isBoosted) return 1;
+    return b.reputationScore - a.reputationScore;
+  });
 }
 
 export async function createSwipe(
@@ -231,6 +254,17 @@ export async function createSwipe(
         message: 'Someone liked you!',
         isSuperLike: isSuperLike || false,
       });
+
+      // Send push notification if target is offline
+      const targetOnline = await isUserOnline(targetUserId);
+      if (!targetOnline) {
+        sendPushToUser(
+          targetUserId,
+          'Someone likes you!',
+          'Open Spark to find out who it could be',
+          { type: 'new_like' }
+        );
+      }
     }
 
     if (reciprocal) {
@@ -258,6 +292,34 @@ export async function createSwipe(
       const io = getIO();
       io.to(`user:${userId}`).emit('new_match', { matchId: match.id, userId: targetUserId });
       io.to(`user:${targetUserId}`).emit('new_match', { matchId: match.id, userId });
+
+      // Send push notifications to offline users for new match
+      const [swiperUser, targetUser] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId }, select: { firstName: true } }),
+        prisma.user.findUnique({ where: { id: targetUserId }, select: { firstName: true } }),
+      ]);
+
+      const [swiperOnline, targetIsOnline] = await Promise.all([
+        isUserOnline(userId),
+        isUserOnline(targetUserId),
+      ]);
+
+      if (!swiperOnline) {
+        sendPushToUser(
+          userId,
+          "It's a Spark!",
+          `You matched with ${targetUser?.firstName || 'someone'}!`,
+          { type: 'new_match', matchId: match.id }
+        );
+      }
+      if (!targetIsOnline) {
+        sendPushToUser(
+          targetUserId,
+          "It's a Spark!",
+          `You matched with ${swiperUser?.firstName || 'someone'}!`,
+          { type: 'new_match', matchId: match.id }
+        );
+      }
     }
   }
 
@@ -391,6 +453,109 @@ export async function getReceivedLikes(userId: string) {
         likedAt: like.createdAt,
       };
     });
+}
+
+const REWIND_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function rewindLastSwipe(userId: string) {
+  // Check premium
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      isPremium: true,
+      premiumUntil: true,
+      energyRemaining: true,
+    },
+  });
+
+  if (!user) throw new AppError('User not found', 404);
+
+  const now = new Date();
+  const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+  if (!hasActivePremium) {
+    throw new AppError('Rewind is a premium feature', 403);
+  }
+
+  // Find last swipe
+  const lastSwipe = await prisma.swipe.findFirst({
+    where: { swiperId: userId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!lastSwipe) {
+    throw new AppError('No swipe to rewind', 404);
+  }
+
+  // Check time window
+  if (now.getTime() - lastSwipe.createdAt.getTime() > REWIND_WINDOW_MS) {
+    throw new AppError('Rewind time expired (5 min limit)', 400);
+  }
+
+  const swipedUserId = lastSwipe.swipedId;
+
+  // If this swipe created a match, delete it
+  const [u1, u2] = [userId, swipedUserId].sort();
+  const match = await prisma.match.findUnique({
+    where: { user1Id_user2Id: { user1Id: u1, user2Id: u2 } },
+  });
+
+  if (match) {
+    // Delete compatibility metrics and match
+    await prisma.compatibilityMetrics.deleteMany({ where: { matchId: match.id } });
+    await prisma.match.delete({ where: { id: match.id } });
+  }
+
+  // Delete the swipe
+  await prisma.swipe.delete({ where: { id: lastSwipe.id } });
+
+  // Restore 1 energy point (cap at MAX_ENERGY)
+  const newEnergy = Math.min(MAX_ENERGY, user.energyRemaining + 1);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { energyRemaining: newEnergy },
+  });
+
+  // Fetch the swiped profile to return
+  const swipedProfile = await prisma.user.findUnique({
+    where: { id: swipedUserId },
+    select: {
+      id: true,
+      firstName: true,
+      dateOfBirth: true,
+      gender: true,
+      bio: true,
+      reputationScore: true,
+      isVerified: true,
+      latitude: true,
+      longitude: true,
+      photos: { orderBy: { position: 'asc' } },
+      interests: { include: { interest: true } },
+    },
+  });
+
+  if (!swipedProfile) {
+    throw new AppError('Swiped user not found', 404);
+  }
+
+  const age = Math.floor(
+    (Date.now() - swipedProfile.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+  );
+
+  return {
+    profile: {
+      id: swipedProfile.id,
+      firstName: swipedProfile.firstName,
+      age,
+      gender: swipedProfile.gender,
+      bio: swipedProfile.bio,
+      reputationScore: swipedProfile.reputationScore,
+      isVerified: swipedProfile.isVerified,
+      distance: null,
+      photos: swipedProfile.photos,
+      interests: swipedProfile.interests.map((ui) => ui.interest),
+    },
+    energyRemaining: newEnergy,
+  };
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

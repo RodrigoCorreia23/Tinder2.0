@@ -21,9 +21,14 @@ import { COLORS } from '@/utils/constants';
 import { Message } from '@/types';
 import DatePlanFlow from '@/components/chat/DatePlanFlow';
 import ProfileModal from '@/components/chat/ProfileModal';
+import GifPicker from '@/components/chat/GifPicker';
 import * as matchService from '@/services/match.service';
 import * as blockService from '@/services/block.service';
 import api from '@/services/api';
+
+const isGifMessage = (content: string): boolean => {
+  return content.includes('giphy.com') || content.endsWith('.gif');
+};
 
 export default function ChatScreen() {
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
@@ -34,6 +39,7 @@ export default function ChatScreen() {
   const [text, setText] = useState('');
   const [showDatePlan, setShowDatePlan] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [iceBreakers, setIceBreakers] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,6 +283,12 @@ export default function ChatScreen() {
     flatListRef.current?.scrollToEnd();
   };
 
+  const handleSendGif = async (gifUrl: string) => {
+    if (!matchId) return;
+    await sendMessage(matchId, gifUrl);
+    flatListRef.current?.scrollToEnd();
+  };
+
   const handleChangeText = (t: string) => {
     setText(t);
     const socket = getSocket();
@@ -291,11 +303,21 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMe = item.senderId === user?.id;
+    const isGif = isGifMessage(item.content);
+
     return (
-      <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
-        <Text style={[styles.messageText, isMe && styles.myMessageText]}>
-          {item.content}
-        </Text>
+      <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage, isGif && styles.gifBubble]}>
+        {isGif ? (
+          <Image
+            source={{ uri: item.content }}
+            style={styles.gifMessageImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={[styles.messageText, isMe && styles.myMessageText]}>
+            {item.content}
+          </Text>
+        )}
         <View style={styles.messageFooter}>
           <Text style={[styles.messageTime, isMe && styles.myMessageTime]}>
             {new Date(item.createdAt).toLocaleTimeString([], {
@@ -369,10 +391,16 @@ export default function ChatScreen() {
 
       <View style={styles.inputContainer}>
         <TouchableOpacity
-          style={styles.datePlanBtn}
+          style={styles.actionBtn}
           onPress={() => setShowDatePlan(true)}
         >
           <Ionicons name="calendar" size={22} color={COLORS.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => setShowGifPicker(true)}
+        >
+          <Ionicons name="happy-outline" size={22} color={COLORS.secondary} />
         </TouchableOpacity>
         <TextInput
           style={styles.input}
@@ -405,6 +433,13 @@ export default function ChatScreen() {
         onClose={() => setShowProfile(false)}
         match={currentMatch}
       />
+
+      {/* GIF Picker */}
+      <GifPicker
+        visible={showGifPicker}
+        onClose={() => setShowGifPicker(false)}
+        onSelect={handleSendGif}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -433,6 +468,15 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: COLORS.card,
     borderBottomLeftRadius: 4,
+  },
+  gifBubble: {
+    padding: 4,
+    backgroundColor: 'transparent',
+  },
+  gifMessageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
   },
   messageText: {
     fontSize: 15,
@@ -520,7 +564,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.text,
   },
-  datePlanBtn: {
+  actionBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,

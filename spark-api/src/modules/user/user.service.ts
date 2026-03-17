@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import prisma from '../../config/database';
 import { AppError } from '../../shared/middleware/errorHandler';
+import { verifySelfie } from '../../shared/utils/ai';
 
 export async function getProfile(userId: string) {
   const user = await prisma.user.findUnique({
@@ -23,6 +25,11 @@ export async function getProfile(userId: string) {
       isVerified: true,
       isPremium: true,
       premiumUntil: true,
+      boostedUntil: true,
+      isTravelMode: true,
+      travelLatitude: true,
+      travelLongitude: true,
+      travelCity: true,
       createdAt: true,
       photos: {
         orderBy: { position: 'asc' },
@@ -231,14 +238,82 @@ export async function deleteAccount(userId: string) {
   });
 }
 
-export async function requestVerification(userId: string) {
-  // For now, just set isVerified to true. In production, this would
-  // trigger a verification flow (selfie check, ID upload, etc.)
-  return prisma.user.update({
-    where: { id: userId },
-    data: { isVerified: true },
-    select: { id: true, isVerified: true },
+export async function requestVerification(userId: string, selfieUrl: string) {
+  // Get user's profile photos
+  const photos = await prisma.userPhoto.findMany({
+    where: { userId },
+    orderBy: { position: 'asc' },
+    take: 2,
   });
+
+  if (photos.length === 0) {
+    throw new AppError('You need at least one profile photo to verify', 400);
+  }
+
+  const profilePhotoUrls = photos.map((p) => p.url);
+  const result = await verifySelfie(selfieUrl, profilePhotoUrls);
+
+  if (result.verified && (result.confidence === 'high' || result.confidence === 'medium')) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { isVerified: true },
+    });
+  }
+
+  return {
+    verified: result.verified && (result.confidence === 'high' || result.confidence === 'medium'),
+    confidence: result.confidence,
+    reason: result.reason,
+  };
+}
+
+export async function generateShareLink(userId: string) {
+  const token = crypto.randomUUID();
+  await prisma.user.update({
+    where: { id: userId },
+    data: { shareToken: token },
+  });
+
+  const link = `https://spark-api-yvl3.onrender.com/share/${token}`;
+  return { link, token };
+}
+
+export async function getSharedProfile(shareToken: string) {
+  const user = await prisma.user.findUnique({
+    where: { shareToken },
+    select: {
+      id: true,
+      firstName: true,
+      dateOfBirth: true,
+      gender: true,
+      bio: true,
+      isVerified: true,
+      photos: {
+        orderBy: { position: 'asc' },
+      },
+      interests: {
+        include: { interest: true },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new AppError('Profile not found', 404);
+  }
+
+  const age = Math.floor(
+    (Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+  );
+
+  return {
+    firstName: user.firstName,
+    age,
+    gender: user.gender,
+    bio: user.bio,
+    isVerified: user.isVerified,
+    photos: user.photos,
+    interests: user.interests.map((ui) => ui.interest),
+  };
 }
 
 export async function activatePremium(userId: string, durationDays: number) {
@@ -255,6 +330,86 @@ export async function activatePremium(userId: string, durationDays: number) {
       id: true,
       isPremium: true,
       premiumUntil: true,
+    },
+  });
+}
+
+const BOOST_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+
+export async function activateBoost(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isPremium: true, premiumUntil: true },
+  });
+
+  if (!user) throw new AppError('User not found', 404);
+
+  const now = new Date();
+  const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+  if (!hasActivePremium) {
+    throw new AppError('Boost is a premium feature', 403);
+  }
+
+  const boostedUntil = new Date(now.getTime() + BOOST_DURATION_MS);
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { boostedUntil },
+    select: { id: true, boostedUntil: true },
+  });
+
+  return updated;
+}
+
+export async function enableTravelMode(
+  userId: string,
+  latitude: number,
+  longitude: number,
+  city: string
+) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isPremium: true, premiumUntil: true },
+  });
+
+  if (!user) throw new AppError('User not found', 404);
+
+  const now = new Date();
+  const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+  if (!hasActivePremium) {
+    throw new AppError('Travel Mode is a premium feature', 403);
+  }
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      isTravelMode: true,
+      travelLatitude: latitude,
+      travelLongitude: longitude,
+      travelCity: city,
+    },
+    select: {
+      id: true,
+      isTravelMode: true,
+      travelLatitude: true,
+      travelLongitude: true,
+      travelCity: true,
+    },
+  });
+}
+
+export async function disableTravelMode(userId: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      isTravelMode: false,
+      travelLatitude: null,
+      travelLongitude: null,
+      travelCity: null,
+    },
+    select: {
+      id: true,
+      isTravelMode: true,
     },
   });
 }

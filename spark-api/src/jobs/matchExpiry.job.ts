@@ -1,6 +1,7 @@
 import prisma from '../config/database';
 import { clampReputation, REPUTATION_EVENTS } from '../shared/utils/scoring';
-import { getIO } from '../socket';
+import { getIO, isUserOnline } from '../socket';
+import { sendPushToUser } from '../shared/utils/pushNotifications';
 
 export async function expireStaleMatches() {
   const now = new Date();
@@ -56,6 +57,29 @@ export async function expireStaleMatches() {
     const io = getIO();
     io.to(`user:${match.user1Id}`).emit('match_expired', { matchId: match.id });
     io.to(`user:${match.user2Id}`).emit('match_expired', { matchId: match.id });
+
+    // Send push notifications to offline users
+    const [user1Online, user2Online] = await Promise.all([
+      isUserOnline(match.user1Id),
+      isUserOnline(match.user2Id),
+    ]);
+
+    if (!user1Online) {
+      sendPushToUser(
+        match.user1Id,
+        'Match expired',
+        'A match expired because no one replied in time.',
+        { type: 'match_expired', matchId: match.id }
+      );
+    }
+    if (!user2Online) {
+      sendPushToUser(
+        match.user2Id,
+        'Match expired',
+        'A match expired because no one replied in time.',
+        { type: 'match_expired', matchId: match.id }
+      );
+    }
 
     console.log(`[CRON] Match ${match.id} expired. Ghoster: ${ghosterId}`);
   }

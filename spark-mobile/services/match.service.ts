@@ -49,3 +49,11 @@ export async function getReceivedLikes() {
   const res = await api.get('/swipes/likes');
   return res.data as ReceivedLike[];
 }
+
+export async function rewindLastSwipe() {
+  const res = await api.post('/swipes/rewind');
+  return res.data as {
+    profile: Profile;
+    energyRemaining: number;
+  };
+}

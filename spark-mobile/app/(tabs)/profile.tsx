@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,19 +9,50 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  TextInput,
+  Modal,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/store/authStore';
-import { COLORS, MAX_PHOTOS } from '@/utils/constants';
+import { useThemeStore } from '@/store/themeStore';
+import { useColors } from '@/hooks/useColors';
+import { MAX_PHOTOS, MIN_INTERESTS, MAX_INTERESTS } from '@/utils/constants';
 import * as userService from '@/services/user.service';
+import { Interest } from '@/types';
+
+type ThemeMode = 'light' | 'dark' | 'system';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser, deleteAccount } = useAuthStore();
   const [uploading, setUploading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ verified: boolean; reason: string } | null>(null);
   const [activatingPremium, setActivatingPremium] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  const themeMode = useThemeStore((s) => s.mode);
+  const setThemeMode = useThemeStore((s) => s.setMode);
+  const COLORS = useColors();
+
+  // Edit bio state
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioText, setBioText] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
+
+  // Edit interests state
+  const [showInterestsModal, setShowInterestsModal] = useState(false);
+  const [allInterests, setAllInterests] = useState<Interest[]>([]);
+  const [selectedInterestIds, setSelectedInterestIds] = useState<number[]>([]);
+  const [loadingInterests, setLoadingInterests] = useState(false);
+  const [savingInterests, setSavingInterests] = useState(false);
+
+  // Boost & Travel state
+  const [boosting, setBoosting] = useState(false);
+  const [showTravelModal, setShowTravelModal] = useState(false);
+  const [togglingTravel, setTogglingTravel] = useState(false);
 
   if (!user) return null;
 
@@ -31,6 +62,109 @@ export default function ProfileScreen() {
 
   const router = useRouter();
   const isPremium = user.isPremium === true;
+  const isBoosted = user.boostedUntil ? new Date(user.boostedUntil) > new Date() : false;
+  const isTraveling = user.isTravelMode === true && !!user.travelCity;
+
+  // Bio editing
+  const handleEditBio = () => {
+    setBioText(user.bio || '');
+    setEditingBio(true);
+  };
+
+  const handleSaveBio = async () => {
+    setSavingBio(true);
+    try {
+      await userService.updateProfile({ bio: bioText.trim() || null });
+      await refreshUser();
+      setEditingBio(false);
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to update bio.');
+      } else {
+        Alert.alert('Error', 'Failed to update bio.');
+      }
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  // Interests editing
+  const handleEditInterests = async () => {
+    setLoadingInterests(true);
+    setShowInterestsModal(true);
+    setSelectedInterestIds(user.interests.map((i) => i.id));
+    try {
+      const interests = await userService.getAllInterests();
+      setAllInterests(interests);
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to load interests.');
+      } else {
+        Alert.alert('Error', 'Failed to load interests.');
+      }
+      setShowInterestsModal(false);
+    } finally {
+      setLoadingInterests(false);
+    }
+  };
+
+  const toggleInterest = (interestId: number) => {
+    setSelectedInterestIds((prev) => {
+      if (prev.includes(interestId)) {
+        return prev.filter((id) => id !== interestId);
+      }
+      if (prev.length >= MAX_INTERESTS) return prev;
+      return [...prev, interestId];
+    });
+  };
+
+  const handleSaveInterests = async () => {
+    if (selectedInterestIds.length < MIN_INTERESTS) {
+      if (Platform.OS === 'web') {
+        window.alert(`Please select at least ${MIN_INTERESTS} interests.`);
+      } else {
+        Alert.alert('Too few interests', `Please select at least ${MIN_INTERESTS} interests.`);
+      }
+      return;
+    }
+    setSavingInterests(true);
+    try {
+      await userService.updateInterests(selectedInterestIds);
+      await refreshUser();
+      setShowInterestsModal(false);
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to update interests.');
+      } else {
+        Alert.alert('Error', 'Failed to update interests.');
+      }
+    } finally {
+      setSavingInterests(false);
+    }
+  };
+
+  // Photo management
+  const handleMovePhoto = async (index: number, direction: 'up' | 'down') => {
+    const photos = [...user.photos];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= photos.length) return;
+
+    const temp = photos[index];
+    photos[index] = photos[targetIndex];
+    photos[targetIndex] = temp;
+
+    const photoIds = photos.map((p) => p.id);
+    try {
+      await userService.reorderPhotos(photoIds);
+      await refreshUser();
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to reorder photos.');
+      } else {
+        Alert.alert('Error', 'Failed to reorder photos.');
+      }
+    }
+  };
 
   const handleDeleteAccount = async () => {
     if (Platform.OS === 'web') {
@@ -120,7 +254,6 @@ export default function ProfileScreen() {
         await userService.uploadPhoto(result.assets[0].uri);
         await refreshUser();
       } catch {
-        // Fallback to addPhoto with URI if uploadPhoto fails
         try {
           await userService.addPhoto(result.assets[0].uri);
           await refreshUser();
@@ -164,23 +297,80 @@ export default function ProfileScreen() {
   };
 
   const handleVerify = async () => {
+    setVerifyResult(null);
+
+    // Launch camera to capture a selfie
+    const permResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permResult.granted) {
+      if (Platform.OS === 'web') {
+        window.alert('Camera permission is required to verify your profile.');
+      } else {
+        Alert.alert('Permission Required', 'Camera permission is required to verify your profile.');
+      }
+      return;
+    }
+
+    const pickerResult = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      cameraType: ImagePicker.CameraType.Front,
+    });
+
+    if (pickerResult.canceled || !pickerResult.assets[0]) return;
+
     setVerifying(true);
     try {
-      await userService.requestVerification();
-      await refreshUser();
-      if (Platform.OS === 'web') {
-        window.alert('Verification request submitted! Your profile will be verified shortly.');
+      // Upload the selfie to get a URL
+      const uploadRes = await userService.uploadPhoto(pickerResult.assets[0].uri);
+      const selfieUrl = uploadRes.url || pickerResult.assets[0].uri;
+
+      const result = await userService.requestVerification(selfieUrl);
+
+      if (result.verified) {
+        setVerifyResult({ verified: true, reason: result.reason });
+        await refreshUser();
+        if (Platform.OS === 'web') {
+          window.alert('Your profile has been verified!');
+        } else {
+          Alert.alert('Verified!', 'Your profile has been verified successfully.');
+        }
       } else {
-        Alert.alert('Verification Requested', 'Your profile will be verified shortly.');
+        setVerifyResult({ verified: false, reason: result.reason });
+        if (Platform.OS === 'web') {
+          window.alert(`Verification failed: ${result.reason}`);
+        } else {
+          Alert.alert('Verification Failed', result.reason);
+        }
       }
     } catch {
       if (Platform.OS === 'web') {
-        window.alert('Failed to request verification. Please try again later.');
+        window.alert('Failed to verify. Please try again later.');
       } else {
-        Alert.alert('Error', 'Failed to request verification. Please try again later.');
+        Alert.alert('Error', 'Failed to verify. Please try again later.');
       }
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleShareProfile = async () => {
+    setSharing(true);
+    try {
+      const { link } = await userService.generateShareLink();
+      await Share.share({
+        message: `Check out my Spark profile! ${link}`,
+        url: link,
+      });
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to generate share link.');
+      } else {
+        Alert.alert('Error', 'Failed to generate share link.');
+      }
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -205,6 +395,82 @@ export default function ProfileScreen() {
     }
   };
 
+  const TRAVEL_CITIES = [
+    { name: 'Lisbon', lat: 38.7223, lng: -9.1393 },
+    { name: 'Porto', lat: 41.1579, lng: -8.6291 },
+    { name: 'London', lat: 51.5074, lng: -0.1278 },
+    { name: 'Paris', lat: 48.8566, lng: 2.3522 },
+    { name: 'New York', lat: 40.7128, lng: -74.006 },
+    { name: 'Barcelona', lat: 41.3874, lng: 2.1686 },
+    { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+    { name: 'São Paulo', lat: -23.5505, lng: -46.6333 },
+  ];
+
+  const handleBoost = async () => {
+    setBoosting(true);
+    try {
+      const result = await userService.activateBoost();
+      await refreshUser();
+      const expiryTime = new Date(result.boostedUntil).toLocaleTimeString();
+      if (Platform.OS === 'web') {
+        window.alert(`Profile boosted until ${expiryTime}!`);
+      } else {
+        Alert.alert('Boosted!', `Your profile will appear at the top for 30 minutes (until ${expiryTime}).`);
+      }
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to activate boost.');
+      } else {
+        Alert.alert('Error', 'Failed to activate boost. Make sure you have premium.');
+      }
+    } finally {
+      setBoosting(false);
+    }
+  };
+
+  const handleEnableTravel = async (city: { name: string; lat: number; lng: number }) => {
+    setTogglingTravel(true);
+    try {
+      await userService.enableTravelMode(city.lat, city.lng, city.name);
+      await refreshUser();
+      setShowTravelModal(false);
+      if (Platform.OS === 'web') {
+        window.alert(`Travel mode activated! You are now exploring ${city.name}.`);
+      } else {
+        Alert.alert('Travel Mode', `You are now exploring ${city.name}! Swipe to meet people there.`);
+      }
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to enable travel mode.');
+      } else {
+        Alert.alert('Error', 'Failed to enable travel mode. Make sure you have premium.');
+      }
+    } finally {
+      setTogglingTravel(false);
+    }
+  };
+
+  const handleDisableTravel = async () => {
+    setTogglingTravel(true);
+    try {
+      await userService.disableTravelMode();
+      await refreshUser();
+      if (Platform.OS === 'web') {
+        window.alert('Travel mode disabled. Back to your real location.');
+      } else {
+        Alert.alert('Travel Mode Off', 'You are back to your real location.');
+      }
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to disable travel mode.');
+      } else {
+        Alert.alert('Error', 'Failed to disable travel mode.');
+      }
+    } finally {
+      setTogglingTravel(false);
+    }
+  };
+
   const getReputationLevel = (score: number) => {
     if (score >= 80) return { label: 'Excellent', color: COLORS.success };
     if (score >= 60) return { label: 'Good', color: COLORS.secondary };
@@ -214,8 +480,16 @@ export default function ProfileScreen() {
 
   const rep = getReputationLevel(user.reputationScore);
 
+  // Group interests by category for the modal
+  const interestsByCategory: Record<string, Interest[]> = {};
+  allInterests.forEach((interest) => {
+    const cat = interest.category || 'Other';
+    if (!interestsByCategory[cat]) interestsByCategory[cat] = [];
+    interestsByCategory[cat].push(interest);
+  });
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: COLORS.backgroundDark }]} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.profilePhotoContainer}>
@@ -235,21 +509,104 @@ export default function ProfileScreen() {
           )}
         </View>
         <View style={styles.headerNameRow}>
-          <Text style={styles.name}>
+          <Text style={[styles.name, { color: COLORS.text }]}>
             {user.firstName}, {age}
           </Text>
           {user.isVerified && (
             <Ionicons name="checkmark-circle" size={20} color="#4FC3F7" />
           )}
         </View>
-        {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
+
+        {/* Editable Bio */}
+        {editingBio ? (
+          <View style={styles.bioEditContainer}>
+            <TextInput
+              style={[styles.bioInput, { backgroundColor: COLORS.card, color: COLORS.text, borderColor: COLORS.primary }]}
+              value={bioText}
+              onChangeText={setBioText}
+              placeholder="Write something about yourself..."
+              placeholderTextColor={COLORS.textLight}
+              multiline
+              maxLength={300}
+              autoFocus
+            />
+            <Text style={styles.bioCharCount}>{bioText.length}/300</Text>
+            <View style={styles.bioEditActions}>
+              <TouchableOpacity
+                style={styles.bioEditCancelBtn}
+                onPress={() => setEditingBio(false)}
+              >
+                <Text style={styles.bioEditCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bioEditSaveBtn, savingBio && { opacity: 0.6 }]}
+                onPress={handleSaveBio}
+                disabled={savingBio}
+              >
+                {savingBio ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.bioEditSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={handleEditBio} style={styles.bioTouchable}>
+            <Text style={[styles.bio, { color: COLORS.textLight }]}>
+              {user.bio || 'Tap to add a bio...'}
+            </Text>
+            <Ionicons name="pencil" size={14} color={COLORS.textLight} style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Theme Card */}
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="color-palette" size={20} color={COLORS.primary} />
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Theme</Text>
+        </View>
+        <View style={styles.themeRow}>
+          {([
+            { mode: 'light' as ThemeMode, label: 'Light', icon: 'sunny' as const },
+            { mode: 'dark' as ThemeMode, label: 'Dark', icon: 'moon' as const },
+            { mode: 'system' as ThemeMode, label: 'System', icon: 'phone-portrait' as const },
+          ]).map((opt) => (
+            <TouchableOpacity
+              key={opt.mode}
+              style={[
+                styles.themeOption,
+                {
+                  backgroundColor: themeMode === opt.mode ? COLORS.primary : COLORS.backgroundDark,
+                  borderColor: themeMode === opt.mode ? COLORS.primary : COLORS.border,
+                },
+              ]}
+              onPress={() => setThemeMode(opt.mode)}
+            >
+              <Ionicons
+                name={opt.icon}
+                size={18}
+                color={themeMode === opt.mode ? '#FFFFFF' : COLORS.textLight}
+              />
+              <Text
+                style={[
+                  styles.themeOptionText,
+                  { color: themeMode === opt.mode ? '#FFFFFF' : COLORS.text },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Verification Card */}
-      <View style={[styles.card, user.isVerified ? styles.verifiedCard : null]}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }, user.isVerified ? styles.verifiedCard : null]}>
         <View style={styles.cardHeader}>
           <Ionicons name="shield-checkmark" size={20} color={user.isVerified ? '#4FC3F7' : COLORS.textLight} />
-          <Text style={styles.cardTitle}>Verification</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Verification</Text>
         </View>
         {user.isVerified ? (
           <View style={styles.verifiedRow}>
@@ -262,19 +619,30 @@ export default function ProfileScreen() {
         ) : (
           <View style={styles.verifySection}>
             <Text style={styles.verifyDescription}>
-              Get a blue checkmark to show others you're real. Verified profiles get more matches!
+              Take a selfie to verify your identity. AI will compare it with your profile photos. Verified profiles get more matches!
             </Text>
+            {verifyResult && !verifyResult.verified && (
+              <View style={styles.verifyFailedBox}>
+                <Ionicons name="close-circle" size={16} color={COLORS.danger} />
+                <Text style={styles.verifyFailedText}>{verifyResult.reason}</Text>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.verifyButton, verifying && { opacity: 0.6 }]}
               onPress={handleVerify}
               disabled={verifying}
             >
               {verifying ? (
-                <ActivityIndicator size="small" color="#4FC3F7" />
+                <>
+                  <ActivityIndicator size="small" color="#4FC3F7" />
+                  <Text style={styles.verifyButtonText}>Verifying your identity...</Text>
+                </>
               ) : (
                 <>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#4FC3F7" />
-                  <Text style={styles.verifyButtonText}>Verify Your Profile</Text>
+                  <Ionicons name="camera-outline" size={18} color="#4FC3F7" />
+                  <Text style={styles.verifyButtonText}>
+                    {verifyResult && !verifyResult.verified ? 'Retry Verification' : 'Take Selfie to Verify'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -283,10 +651,10 @@ export default function ProfileScreen() {
       </View>
 
       {/* Premium Card */}
-      <View style={[styles.card, isPremium ? styles.premiumCardActive : styles.premiumCard]}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }, isPremium ? styles.premiumCardActive : styles.premiumCard]}>
         <View style={styles.cardHeader}>
           <Ionicons name="star" size={20} color="#FFD700" />
-          <Text style={styles.cardTitle}>Spark Premium</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Spark Premium</Text>
           {isPremium && (
             <View style={styles.activeBadge}>
               <Text style={styles.activeBadgeText}>ACTIVE</Text>
@@ -336,14 +704,104 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* Boost Card (Premium only) */}
+      {isPremium && (
+        <View style={[styles.card, { backgroundColor: COLORS.card }, styles.boostCard]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="rocket" size={20} color="#FF9800" />
+            <Text style={[styles.cardTitle, { color: COLORS.text }]}>Boost</Text>
+            {isBoosted && (
+              <View style={[styles.activeBadge, { backgroundColor: '#FF9800' }]}>
+                <Text style={styles.activeBadgeText}>ACTIVE</Text>
+              </View>
+            )}
+          </View>
+          {isBoosted ? (
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 14, color: COLORS.text, fontWeight: '500' }}>
+                Your profile is boosted!
+              </Text>
+              <Text style={{ fontSize: 12, color: COLORS.textLight }}>
+                Expires: {new Date(user.boostedUntil!).toLocaleTimeString()}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <Text style={{ fontSize: 13, color: COLORS.textLight, lineHeight: 20 }}>
+                Boost your profile for 30 minutes to appear at the top of discover for everyone nearby.
+              </Text>
+              <TouchableOpacity
+                style={[styles.boostButton, boosting && { opacity: 0.6 }]}
+                onPress={handleBoost}
+                disabled={boosting}
+              >
+                <Ionicons name="rocket" size={18} color="#fff" />
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}>
+                  {boosting ? 'Boosting...' : 'Boost Now'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Travel Mode Card (Premium only) */}
+      {isPremium && (
+        <View style={[styles.card, { backgroundColor: COLORS.card }, styles.travelCard]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="airplane" size={20} color="#5C6BC0" />
+            <Text style={[styles.cardTitle, { color: COLORS.text }]}>Travel Mode</Text>
+            {isTraveling && (
+              <View style={[styles.activeBadge, { backgroundColor: '#5C6BC0' }]}>
+                <Text style={styles.activeBadgeText}>ACTIVE</Text>
+              </View>
+            )}
+          </View>
+          {isTraveling ? (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="location" size={16} color="#5C6BC0" />
+                <Text style={{ fontSize: 15, color: COLORS.text, fontWeight: '600' }}>
+                  Exploring {user.travelCity}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.travelDisableBtn, togglingTravel && { opacity: 0.6 }]}
+                onPress={handleDisableTravel}
+                disabled={togglingTravel}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.danger }}>
+                  {togglingTravel ? 'Disabling...' : 'Disable Travel Mode'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <Text style={{ fontSize: 13, color: COLORS.textLight, lineHeight: 20 }}>
+                Explore another city and swipe on people there before you even arrive!
+              </Text>
+              <TouchableOpacity
+                style={styles.travelEnableBtn}
+                onPress={() => setShowTravelModal(true)}
+              >
+                <Ionicons name="airplane" size={18} color="#fff" />
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}>
+                  Explore a City
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Reputation Card */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="star" size={20} color={COLORS.accent} />
-          <Text style={styles.cardTitle}>Reputation</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Reputation</Text>
         </View>
         <View style={styles.repRow}>
-          <Text style={styles.repScore}>{Math.round(user.reputationScore)}</Text>
+          <Text style={[styles.repScore, { color: COLORS.text }]}>{Math.round(user.reputationScore)}</Text>
           <Text style={[styles.repLevel, { color: rep.color }]}>{rep.label}</Text>
         </View>
         <View style={styles.repBar}>
@@ -360,19 +818,19 @@ export default function ProfileScreen() {
       </View>
 
       {/* Energy Card */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="flash" size={20} color={COLORS.accent} />
-          <Text style={styles.cardTitle}>Daily Energy</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Daily Energy</Text>
         </View>
         {isPremium ? (
-          <Text style={styles.energyNum}>
-            Unlimited <Text style={styles.energyMax}>swipes</Text>
+          <Text style={[styles.energyNum, { color: COLORS.text }]}>
+            Unlimited <Text style={[styles.energyMax, { color: COLORS.textLight }]}>swipes</Text>
           </Text>
         ) : (
           <>
-            <Text style={styles.energyNum}>
-              {user.energyRemaining} <Text style={styles.energyMax}>/ 25 swipes</Text>
+            <Text style={[styles.energyNum, { color: COLORS.text }]}>
+              {user.energyRemaining} <Text style={[styles.energyMax, { color: COLORS.textLight }]}>/ 25 swipes</Text>
             </Text>
             <View style={styles.repBar}>
               <View
@@ -387,10 +845,14 @@ export default function ProfileScreen() {
       </View>
 
       {/* Interests */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="heart" size={20} color={COLORS.primary} />
-          <Text style={styles.cardTitle}>Interests</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Interests</Text>
+          <TouchableOpacity onPress={handleEditInterests} style={styles.editBtn}>
+            <Ionicons name="pencil" size={16} color={COLORS.primary} />
+            <Text style={styles.editBtnText}>Edit</Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.chipRow}>
           {user.interests.map((i) => (
@@ -402,15 +864,38 @@ export default function ProfileScreen() {
       </View>
 
       {/* Photos */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="images" size={20} color={COLORS.secondary} />
-          <Text style={styles.cardTitle}>Photos ({user.photos.length}/{MAX_PHOTOS})</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Photos ({user.photos.length}/{MAX_PHOTOS})</Text>
         </View>
         <View style={styles.photoGrid}>
-          {user.photos.map((photo) => (
+          {user.photos.map((photo, index) => (
             <View key={photo.id} style={styles.photoBox}>
               <Image source={{ uri: photo.url }} style={styles.gridPhoto} />
+              {index === 0 && (
+                <View style={styles.mainPhotoBadge}>
+                  <Text style={styles.mainPhotoBadgeText}>Main</Text>
+                </View>
+              )}
+              <View style={styles.photoActions}>
+                {index > 0 && (
+                  <TouchableOpacity
+                    style={styles.photoMoveBtn}
+                    onPress={() => handleMovePhoto(index, 'up')}
+                  >
+                    <Ionicons name="arrow-up" size={14} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                {index < user.photos.length - 1 && (
+                  <TouchableOpacity
+                    style={styles.photoMoveBtn}
+                    onPress={() => handleMovePhoto(index, 'down')}
+                  >
+                    <Ionicons name="arrow-down" size={14} color="#fff" />
+                  </TouchableOpacity>
+                )}
+              </View>
               <TouchableOpacity
                 style={styles.deletePhotoBtn}
                 onPress={() => handleDeletePhoto(photo.id)}
@@ -435,8 +920,8 @@ export default function ProfileScreen() {
       </View>
 
       {/* Settings */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Preferences</Text>
+      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
+        <Text style={[styles.cardTitle, { color: COLORS.text }]}>Preferences</Text>
         <View style={styles.settingRow}>
           <Text style={styles.settingLabel}>Looking for</Text>
           <Text style={styles.settingValue}>{user.lookingFor.join(', ')}</Text>
@@ -451,6 +936,22 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* Share Profile */}
+      <TouchableOpacity
+        style={[styles.shareButton, sharing && { opacity: 0.6 }]}
+        onPress={handleShareProfile}
+        disabled={sharing}
+      >
+        {sharing ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <Ionicons name="share-outline" size={20} color="#fff" />
+            <Text style={styles.shareButtonText}>Share Profile</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
@@ -462,6 +963,116 @@ export default function ProfileScreen() {
         <Ionicons name="trash-outline" size={20} color="#fff" />
         <Text style={styles.deleteText}>Delete Account</Text>
       </TouchableOpacity>
+
+      {/* Travel Mode Modal */}
+      <Modal visible={showTravelModal} animationType="slide" transparent>
+        <View style={styles.travelOverlay}>
+          <View style={[styles.travelModalContent, { backgroundColor: COLORS.background }]}>
+            <View style={styles.travelModalHeader}>
+              <Text style={[styles.travelModalTitle, { color: COLORS.text }]}>Choose a City</Text>
+              <TouchableOpacity onPress={() => setShowTravelModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 13, color: COLORS.textLight, marginBottom: 16 }}>
+              Select a city to start exploring profiles there.
+            </Text>
+            {TRAVEL_CITIES.map((city) => (
+              <TouchableOpacity
+                key={city.name}
+                style={[styles.travelCityBtn, { borderColor: COLORS.border }]}
+                onPress={() => handleEnableTravel(city)}
+                disabled={togglingTravel}
+              >
+                <Ionicons name="location-outline" size={18} color="#5C6BC0" />
+                <Text style={[styles.travelCityText, { color: COLORS.text }]}>{city.name}</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
+              </TouchableOpacity>
+            ))}
+            {togglingTravel && (
+              <ActivityIndicator size="small" color="#5C6BC0" style={{ marginTop: 12 }} />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Interests Modal */}
+      <Modal
+        visible={showInterestsModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowInterestsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: COLORS.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: COLORS.text }]}>Edit Interests</Text>
+              <TouchableOpacity onPress={() => setShowInterestsModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Select {MIN_INTERESTS}-{MAX_INTERESTS} interests ({selectedInterestIds.length} selected)
+            </Text>
+
+            {loadingInterests ? (
+              <View style={styles.modalLoading}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+              </View>
+            ) : (
+              <ScrollView style={styles.interestsList} contentContainerStyle={{ paddingBottom: 16 }}>
+                {Object.entries(interestsByCategory).map(([category, interests]) => (
+                  <View key={category} style={styles.interestCategory}>
+                    <Text style={styles.interestCategoryTitle}>{category}</Text>
+                    <View style={styles.interestChipRow}>
+                      {interests.map((interest) => {
+                        const selected = selectedInterestIds.includes(interest.id);
+                        return (
+                          <TouchableOpacity
+                            key={interest.id}
+                            style={[
+                              styles.interestChip,
+                              selected && styles.interestChipSelected,
+                            ]}
+                            onPress={() => toggleInterest(interest.id)}
+                          >
+                            <Text
+                              style={[
+                                styles.interestChipText,
+                                selected && styles.interestChipTextSelected,
+                              ]}
+                            >
+                              {interest.name}
+                            </Text>
+                            {selected && (
+                              <Ionicons name="checkmark" size={14} color="#fff" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.saveInterestsBtn,
+                (savingInterests || selectedInterestIds.length < MIN_INTERESTS) && { opacity: 0.6 },
+              ]}
+              onPress={handleSaveInterests}
+              disabled={savingInterests || selectedInterestIds.length < MIN_INTERESTS}
+            >
+              {savingInterests ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveInterestsBtnText}>Save Interests</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -527,6 +1138,63 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 32,
   },
+  bioTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  bioEditContainer: {
+    width: '100%',
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  bioInput: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: COLORS.text,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  bioCharCount: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    textAlign: 'right',
+  },
+  bioEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  bioEditCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.backgroundDark,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  bioEditCancelText: {
+    fontSize: 14,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  bioEditSaveBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  bioEditSaveText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '600',
+  },
   // Card styles
   card: {
     backgroundColor: COLORS.card,
@@ -544,6 +1212,39 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
     flex: 1,
+  },
+  // Theme
+  themeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  themeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,107,107,0.1)',
+  },
+  editBtnText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   // Verification
   verifiedCard: {
@@ -580,6 +1281,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textLight,
     lineHeight: 20,
+  },
+  verifyFailedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FDECEA',
+    padding: 10,
+    borderRadius: 8,
+  },
+  verifyFailedText: {
+    fontSize: 13,
+    color: COLORS.danger,
+    flex: 1,
   },
   verifyButton: {
     flexDirection: 'row',
@@ -735,6 +1449,34 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 12,
   },
+  mainPhotoBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  mainPhotoBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  photoActions: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    gap: 2,
+  },
+  photoMoveBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   deletePhotoBtn: {
     position: 'absolute',
     top: 4,
@@ -772,6 +1514,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.text,
   },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.secondary,
+    marginHorizontal: 16,
+  },
+  shareButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -799,5 +1556,169 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '600',
+  },
+  // Boost Card
+  boostCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,152,0,0.3)',
+  },
+  boostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FF9800',
+    marginTop: 4,
+  },
+  // Travel Mode Card
+  travelCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(92,107,192,0.3)',
+  },
+  travelEnableBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#5C6BC0',
+    marginTop: 4,
+  },
+  travelDisableBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(231,76,60,0.3)',
+  },
+  // Travel Modal
+  travelOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  travelModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  travelModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  travelModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  travelCityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  travelCityText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  // Interests Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    padding: 20,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: COLORS.textLight,
+  },
+  modalLoading: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  interestsList: {
+    maxHeight: 400,
+  },
+  interestCategory: {
+    marginBottom: 16,
+  },
+  interestCategoryTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  interestChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  interestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.backgroundDark,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  interestChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  interestChipText: {
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  interestChipTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  saveInterestsBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveInterestsBtnText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });

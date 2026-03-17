@@ -46,8 +46,20 @@ model User {
   longitude         Float?
   locationUpdatedAt DateTime? @map("location_updated_at")
 
+  // Boost
+  boostedUntil  DateTime? @map("boosted_until")
+
+  // Travel Mode
+  travelLatitude  Float?   @map("travel_latitude")
+  travelLongitude Float?   @map("travel_longitude")
+  travelCity      String?  @map("travel_city")
+  isTravelMode    Boolean  @default(false) @map("is_travel_mode")
+
   // Push notifications
   expoPushToken String? @map("expo_push_token")
+
+  // Shareable profile
+  shareToken   String?  @unique @map("share_token")
 
   // Account state
   isActive     Boolean  @default(true) @map("is_active")

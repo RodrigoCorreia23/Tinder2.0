@@ -9,6 +9,7 @@ import chatRoutes from './modules/chat/chat.routes';
 import mapRoutes from './modules/map/map.routes';
 import plannerRoutes from './modules/date-planner/planner.routes';
 import blockRoutes from './modules/block/block.routes';
+import * as userController from './modules/user/user.controller';
 import { authenticate } from './modules/auth/auth.middleware';
 
 const app = express();
@@ -21,6 +22,10 @@ app.use(express.json());
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Public routes (no auth required)
+app.get('/api/profile/:token', userController.getSharedProfile);
+app.get('/share/:token', userController.getSharedProfileHtml);
 
 // Routes
 app.use('/api/auth', authRoutes);

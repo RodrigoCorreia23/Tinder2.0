@@ -38,11 +38,22 @@ export async function getNearbyUsers(
       gender: true,
       lookingFor: true,
       isPremium: true,
+      isTravelMode: true,
+      travelLatitude: true,
+      travelLongitude: true,
       interests: { select: { interestId: true } },
     },
   });
 
   if (!user) throw new AppError('User not found', 404);
+
+  // Use travel coordinates if travel mode is active
+  const effectiveLat = user.isTravelMode && user.travelLatitude != null
+    ? user.travelLatitude
+    : lat;
+  const effectiveLng = user.isTravelMode && user.travelLongitude != null
+    ? user.travelLongitude
+    : lng;
 
   const radiusMeters = user.isPremium ? PREMIUM_RADIUS_METERS : FREE_RADIUS_METERS;
 
@@ -51,7 +62,7 @@ export async function getNearbyUsers(
 
   // Find users within radius matching preferences
   const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
+  const lngDelta = radiusMeters / (111320 * Math.cos((effectiveLat * Math.PI) / 180));
 
   const nearbyUsers = await prisma.user.findMany({
     where: {
@@ -60,12 +71,12 @@ export async function getNearbyUsers(
       gender: { in: user.lookingFor },
       lookingFor: { hasSome: [user.gender] },
       latitude: {
-        gte: lat - latDelta,
-        lte: lat + latDelta,
+        gte: effectiveLat - latDelta,
+        lte: effectiveLat + latDelta,
       },
       longitude: {
-        gte: lng - lngDelta,
-        lte: lng + lngDelta,
+        gte: effectiveLng - lngDelta,
+        lte: effectiveLng + lngDelta,
       },
       // Premium filter: minimum reputation
       ...(filters?.minReputation ? { reputationScore: { gte: filters.minReputation } } : {}),
@@ -90,7 +101,7 @@ export async function getNearbyUsers(
   return nearbyUsers
     .filter((u) => {
       if (!u.latitude || !u.longitude) return false;
-      const dist = haversineMeters(lat, lng, u.latitude, u.longitude);
+      const dist = haversineMeters(effectiveLat, effectiveLng, u.latitude, u.longitude);
       return dist <= radiusMeters;
     })
     .map((u) => {

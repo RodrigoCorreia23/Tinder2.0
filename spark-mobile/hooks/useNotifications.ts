@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { getSocket } from '@/services/socket';
-import { requestPermissions, showNotification } from '@/services/notifications';
+import { requestPermissions, showNotification, getExpoPushToken } from '@/services/notifications';
 import { useSwipeStore } from '@/store/swipeStore';
 import { useChatStore } from '@/store/chatStore';
+import * as userService from '@/services/user.service';
 
 /**
  * Hook that listens to socket events and shows push notifications.
@@ -25,6 +26,17 @@ export function useNotifications() {
         return;
       }
       console.log('[NOTIFICATIONS] Permission granted, setting up listeners');
+
+      // Register push token with backend
+      try {
+        const pushToken = await getExpoPushToken();
+        if (pushToken) {
+          await userService.registerPushToken(pushToken);
+          console.log('[NOTIFICATIONS] Push token registered:', pushToken);
+        }
+      } catch (err) {
+        console.log('[NOTIFICATIONS] Failed to register push token:', err);
+      }
 
       // Wait a bit for socket to connect
       const waitForSocket = () => {

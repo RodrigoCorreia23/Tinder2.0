@@ -82,3 +82,17 @@ export function getIO(): Server {
   }
   return io;
 }
+
+/**
+ * Checks if a user is currently connected via socket.
+ * Returns true if the user has at least one active socket in their personal room.
+ */
+export async function isUserOnline(userId: string): Promise<boolean> {
+  if (!io) return false;
+  try {
+    const sockets = await io.in(`user:${userId}`).fetchSockets();
+    return sockets.length > 0;
+  } catch {
+    return false;
+  }
+}

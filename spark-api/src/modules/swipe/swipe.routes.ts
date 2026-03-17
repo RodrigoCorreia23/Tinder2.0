@@ -13,5 +13,6 @@ router.post('/', validateRequest(createSwipeSchema), swipeController.createSwipe
 router.get('/energy', swipeController.getEnergy);
 router.get('/likes', swipeController.getReceivedLikes);
 router.get('/super-like-status', swipeController.getSuperLikeStatus);
+router.post('/rewind', swipeController.rewindLastSwipe);
 
 export default router;

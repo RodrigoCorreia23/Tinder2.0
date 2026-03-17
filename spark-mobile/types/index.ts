@@ -17,6 +17,12 @@ export interface User {
   isVerified: boolean;
   isPremium?: boolean;
   premiumUntil?: string | null;
+  boostedUntil?: string | null;
+  isTravelMode?: boolean;
+  travelLatitude?: number | null;
+  travelLongitude?: number | null;
+  travelCity?: string | null;
+  shareToken?: string;
   photos: Photo[];
   interests: Interest[];
 }

@@ -62,7 +62,37 @@ export async function activatePremium() {
   return res.data;
 }
 
-export async function requestVerification() {
-  const res = await api.post('/users/me/verify');
+export async function reorderPhotos(photoIds: string[]) {
+  const res = await api.put('/users/me/photos/reorder', { photoIds });
+  return res.data;
+}
+
+export async function requestVerification(selfieUrl: string) {
+  const res = await api.post('/users/me/verify', { selfieUrl });
+  return res.data as { verified: boolean; confidence: string; reason: string };
+}
+
+export async function generateShareLink() {
+  const res = await api.post('/users/me/share-link');
+  return res.data as { link: string; token: string };
+}
+
+export async function registerPushToken(token: string) {
+  const res = await api.put('/users/me/push-token', { token });
+  return res.data;
+}
+
+export async function activateBoost() {
+  const res = await api.post('/users/me/boost');
+  return res.data as { id: string; boostedUntil: string };
+}
+
+export async function enableTravelMode(latitude: number, longitude: number, city: string) {
+  const res = await api.post('/users/me/travel', { latitude, longitude, city });
+  return res.data;
+}
+
+export async function disableTravelMode() {
+  const res = await api.delete('/users/me/travel');
   return res.data;
 }

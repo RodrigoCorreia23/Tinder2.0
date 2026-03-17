@@ -40,8 +40,18 @@ router.delete('/me', userController.deleteAccount);
 // Verification
 router.post('/me/verify', userController.requestVerification);
 
+// Share link
+router.post('/me/share-link', userController.generateShareLink);
+
 // Premium
 router.post('/me/premium', userController.activatePremium);
+
+// Boost
+router.post('/me/boost', userController.activateBoost);
+
+// Travel Mode
+router.post('/me/travel', userController.enableTravelMode);
+router.delete('/me/travel', userController.disableTravelMode);
 
 // Public profile
 router.get('/:id', userController.getUser);

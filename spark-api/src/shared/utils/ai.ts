@@ -1,5 +1,60 @@
 import openai from '../../config/openai';
 
+// ============================================
+// SELFIE VERIFICATION
+// ============================================
+
+export async function verifySelfie(
+  selfieUrl: string,
+  profilePhotoUrls: string[]
+): Promise<{ verified: boolean; confidence: string; reason: string }> {
+  try {
+    const imageMessages: Array<{ type: 'image_url'; image_url: { url: string } }> = [
+      { type: 'image_url', image_url: { url: selfieUrl } },
+      ...profilePhotoUrls.slice(0, 2).map((url) => ({
+        type: 'image_url' as const,
+        image_url: { url },
+      })),
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a profile verification assistant. Compare the selfie (first image) with the profile photos (subsequent images). Determine if they appear to be the same person. Consider face shape, features, skin tone, and general appearance. Minor differences in lighting, angle, and accessories are acceptable. Respond in JSON: { "verified": boolean, "confidence": "high" | "medium" | "low", "reason": string }',
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'The first image is a selfie. The remaining images are profile photos. Are they the same person?' },
+            ...imageMessages,
+          ] as any,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error('No response from AI');
+
+    return JSON.parse(content) as { verified: boolean; confidence: string; reason: string };
+  } catch (err) {
+    console.error('[AI] Selfie verification failed:', err);
+    return {
+      verified: false,
+      confidence: 'low',
+      reason: 'Verification service unavailable',
+    };
+  }
+}
+
+// ============================================
+// DATE PLANNING
+// ============================================
+
 interface DateSuggestionInput {
   user1Name: string;
   user2Name: string;

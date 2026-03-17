@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useSwipeStore } from '@/store/swipeStore';
 import { useChatStore } from '@/store/chatStore';
@@ -10,6 +10,7 @@ export default function TabsLayout() {
   // Initialize push notifications
   useNotifications();
 
+  const COLORS = useColors();
   const likesCount = useSwipeStore((s) => s.receivedLikes.length);
   const matches = useChatStore((s) => s.matches);
   const currentUserId = useAuthStore((s) => s.user?.id);

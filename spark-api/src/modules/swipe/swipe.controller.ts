@@ -47,3 +47,12 @@ export async function getSuperLikeStatus(req: AuthRequest, res: Response, next: 
     next(err);
   }
 }
+
+export async function rewindLastSwipe(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await swipeService.rewindLastSwipe(req.userId!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
