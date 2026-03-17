@@ -8,8 +8,9 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatStore } from '@/store/chatStore';
 import { useAuthStore } from '@/store/authStore';
@@ -21,7 +22,8 @@ import api from '@/services/api';
 
 export default function ChatScreen() {
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
-  const { messages, loadMessages, sendMessage, addMessage, markAsRead } = useChatStore();
+  const navigation = useNavigation();
+  const { matches, messages, loadMessages, sendMessage, addMessage, markAsRead } = useChatStore();
   const user = useAuthStore((s) => s.user);
   const [text, setText] = useState('');
   const [showDatePlan, setShowDatePlan] = useState(false);
@@ -29,6 +31,29 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
 
   const chatMessages = messages[matchId!] || [];
+
+  // Set header with other user's name and photo
+  useEffect(() => {
+    const match = matches.find((m) => m.id === matchId);
+    if (match) {
+      const photoUrl = match.otherUser.photos[0]?.url;
+      navigation.setOptions({
+        headerTitle: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {photoUrl ? (
+              <Image
+                source={{ uri: photoUrl }}
+                style={{ width: 32, height: 32, borderRadius: 16 }}
+              />
+            ) : null}
+            <Text style={{ fontSize: 17, fontWeight: 'bold', color: COLORS.text }}>
+              {match.otherUser.firstName}
+            </Text>
+          </View>
+        ),
+      });
+    }
+  }, [matchId, matches]);
 
   useEffect(() => {
     if (!matchId) return;

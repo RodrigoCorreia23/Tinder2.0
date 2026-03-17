@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   },
   timeSlotText: { fontSize: 12, color: COLORS.text },
   timeSlotTextActive: { color: '#fff', fontWeight: 'bold' },
-  footer: { paddingVertical: 20, gap: 12 },
+  footer: { paddingVertical: 20, paddingBottom: 40, gap: 12 },
   selectedCount: { fontSize: 13, color: COLORS.textLight, textAlign: 'center' },
   submitBtn: {
     height: 48,

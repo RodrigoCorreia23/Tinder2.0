@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSwipeStore } from '@/store/swipeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
+import { getSocket } from '@/services/socket';
 import { COLORS } from '@/utils/constants';
 import { Profile } from '@/types';
 import MatchAnimation from '@/components/match/MatchAnimation';
@@ -45,38 +46,64 @@ export default function DiscoverScreen() {
     loadProfiles();
     loadEnergy();
     loadReceivedLikes();
-
-    // Listen for match via socket — this is the reliable way
-    const socket = require('@/services/socket').getSocket();
-    if (socket) {
-      const handleNewMatch = (data: { matchId: string; userId: string }) => {
-        console.log('[DISCOVER] Socket new_match event:', data);
-        const cached = swipedProfilesCache.current[data.userId];
-        if (cached) {
-          setMatchedProfile(cached);
-        } else {
-          setMatchedProfile({
-            id: data.userId,
-            firstName: 'Someone',
-            age: 0,
-            gender: '',
-            bio: null,
-            reputationScore: 50,
-            isVerified: false,
-            distance: null,
-            photos: [],
-            interests: [],
-          });
-        }
-        loadMatches();
-      };
-
-      socket.on('new_match', handleNewMatch);
-      return () => {
-        socket.off('new_match', handleNewMatch);
-      };
-    }
   }, []);
+
+  // Listen for match via socket
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewMatch = (data: { matchId: string; userId: string }) => {
+      console.log('[DISCOVER] Socket new_match event:', data);
+      const cached = swipedProfilesCache.current[data.userId];
+      if (cached) {
+        setMatchedProfile(cached);
+      } else {
+        setMatchedProfile({
+          id: data.userId,
+          firstName: 'Someone',
+          age: 0,
+          gender: '',
+          bio: null,
+          reputationScore: 50,
+          isVerified: false,
+          distance: null,
+          photos: [],
+          interests: [],
+        });
+      }
+      loadMatches();
+    };
+
+    socket.on('new_match', handleNewMatch);
+    return () => {
+      socket.off('new_match', handleNewMatch);
+    };
+  });
+
+  // Fallback: if swipe returned a match but socket didn't fire
+  useEffect(() => {
+    if (lastMatch && !matchedProfile) {
+      const cached = swipedProfilesCache.current[lastMatch.userId];
+      if (cached) {
+        setMatchedProfile(cached);
+      } else {
+        setMatchedProfile({
+          id: lastMatch.userId,
+          firstName: 'Someone',
+          age: 0,
+          gender: '',
+          bio: null,
+          reputationScore: 50,
+          isVerified: false,
+          distance: null,
+          photos: [],
+          interests: [],
+        });
+      }
+      loadMatches();
+    }
+  }, [lastMatch]);
 
   const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass') => {
     try {
