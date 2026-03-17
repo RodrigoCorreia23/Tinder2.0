@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { useAuthStore } from '@/store/authStore';
 import { COLORS } from '@/utils/constants';
 
@@ -9,7 +10,21 @@ export default function RootLayout() {
 
   useEffect(() => {
     initialize();
+    checkForUpdates();
   }, []);
+
+  const checkForUpdates = async () => {
+    if (__DEV__) return;
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      }
+    } catch (e) {
+      console.log('Update check failed:', e);
+    }
+  };
 
   return (
     <>
