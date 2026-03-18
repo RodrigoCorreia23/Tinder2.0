@@ -171,8 +171,18 @@ export default function DiscoverScreen() {
   }, [lastMatch]);
 
   const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) => {
+    // Cache profile before swipe removes it from the list
+    const profileToCache = profiles.find((p) => p.id === targetUserId);
+    if (profileToCache) {
+      swipedProfilesCache.current[targetUserId] = profileToCache;
+    }
     try {
-      await swipe(targetUserId, direction, isSuperLike);
+      const matched = await swipe(targetUserId, direction, isSuperLike);
+      // If swipe returned a match, show animation immediately
+      if (matched && profileToCache) {
+        setMatchedProfile(profileToCache);
+        loadMatches();
+      }
     } catch (err) {
       console.error('[DISCOVER] Swipe error:', err);
     }
