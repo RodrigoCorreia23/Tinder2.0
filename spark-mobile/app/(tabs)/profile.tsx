@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useColors } from '@/hooks/useColors';
-import { MAX_PHOTOS, MIN_INTERESTS, MAX_INTERESTS } from '@/utils/constants';
+import { COLORS, MAX_PHOTOS, MIN_INTERESTS, MAX_INTERESTS } from '@/utils/constants';
 import * as userService from '@/services/user.service';
 import { Interest } from '@/types';
 
