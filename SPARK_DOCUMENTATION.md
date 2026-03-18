@@ -89,15 +89,19 @@ Spark is a dating app built to create meaningful connections through intentional
 ### AI Features
 
 #### 6. AI Date Planner
-- Inside any active match, users can request an **AI-generated date plan**
+- Inside any active match, users can request **AI-generated date plans**
 - Powered by **GPT-4o-mini**
-- Analyzes both users' **common interests** and **availability slots** to suggest:
-  - An activity (e.g., "Coffee date at a cozy cafe")
-  - A venue name and address
-  - A suggested time
-  - A reasoning explaining why this date was suggested
-- Both users can submit availability windows before generating a plan
-- Both users must **accept** for the date to be confirmed
+- **Location-aware**: uses both users' GPS coordinates to calculate the **midpoint** between them
+- Generates **3 different options** (casual, adventurous, romantic) with:
+  - An activity name
+  - A specific venue name near the midpoint
+  - A venue address/neighborhood roughly **halfway between both users**
+  - A personalized reasoning explaining why this date fits both
+  - A suggested time based on availability overlap
+- Frontend shows **Option 1 / Option 2 / Option 3** tabs to browse choices
+- Both users submit availability windows before generating plans
+- Both users must **accept** a specific option for the date to be confirmed
+- Supports travel mode coordinates (uses virtual location if active)
 
 #### 7. AI Ice Breakers
 - For any match, users can request **3 AI-generated conversation starters**

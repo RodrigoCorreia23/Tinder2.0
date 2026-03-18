@@ -35,7 +35,8 @@ const TIME_OPTIONS = [
 export default function DatePlanFlow({ matchId, visible, onClose }: DatePlanFlowProps) {
   const [step, setStep] = useState<'availability' | 'waiting' | 'plan'>('availability');
   const [selectedSlots, setSelectedSlots] = useState<TimeSlot[]>([]);
-  const [datePlan, setDatePlan] = useState<DatePlan | null>(null);
+  const [datePlans, setDatePlans] = useState<DatePlan[]>([]);
+  const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [theirAvailability, setTheirAvailability] = useState(false);
 
@@ -51,8 +52,9 @@ export default function DatePlanFlow({ matchId, visible, onClose }: DatePlanFlow
       if (result.bothSet) {
         // Both set — check for existing plans
         const plans = await datePlannerService.getPlans(matchId);
-        if (plans.length > 0 && plans[0].status === 'pending') {
-          setDatePlan(plans[0]);
+        if (plans.length > 0) {
+          setDatePlans(plans.filter((p: DatePlan) => p.status === 'pending'));
+          setSelectedPlanIndex(0);
           setStep('plan');
         } else {
           setStep('plan');
@@ -106,7 +108,11 @@ export default function DatePlanFlow({ matchId, visible, onClose }: DatePlanFlow
     try {
       const result = await datePlannerService.setAvailability(matchId, selectedSlots);
       if (result.plan) {
-        setDatePlan(result.plan);
+        // Fetch all plans for this match (there should be 3 options)
+        const plans = await datePlannerService.getPlans(matchId);
+        const pendingPlans = plans.filter((p: DatePlan) => p.status === 'pending');
+        setDatePlans(pendingPlans.length > 0 ? pendingPlans : [result.plan]);
+        setSelectedPlanIndex(0);
         setStep('plan');
       } else {
         setStep('waiting');
@@ -217,97 +223,128 @@ export default function DatePlanFlow({ matchId, visible, onClose }: DatePlanFlow
             </View>
           )}
 
-          {/* Step 3: Date plan */}
-          {step === 'plan' && datePlan && (
-            <View style={styles.planContent}>
-              <View style={styles.planCard}>
-                <View style={styles.planIconRow}>
-                  <View style={styles.planIconCircle}>
-                    <Ionicons name="calendar" size={28} color={COLORS.primary} />
-                  </View>
-                </View>
-
-                <Text style={styles.planActivity}>{datePlan.activity}</Text>
-
-                {datePlan.venueName && (
-                  <View style={styles.planDetailRow}>
-                    <Ionicons name="location" size={16} color={COLORS.textLight} />
-                    <Text style={styles.planDetailText}>{datePlan.venueName}</Text>
-                  </View>
-                )}
-
-                {datePlan.venueAddress && (
-                  <View style={styles.planDetailRow}>
-                    <Ionicons name="map" size={16} color={COLORS.textLight} />
-                    <Text style={styles.planDetailText}>{datePlan.venueAddress}</Text>
-                  </View>
-                )}
-
-                {datePlan.suggestedTime && (
-                  <View style={styles.planDetailRow}>
-                    <Ionicons name="time" size={16} color={COLORS.textLight} />
-                    <Text style={styles.planDetailText}>
-                      {new Date(datePlan.suggestedTime).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'long',
-                        day: 'numeric',
-                      })} at {new Date(datePlan.suggestedTime).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </Text>
-                  </View>
-                )}
-
-                {datePlan.aiReasoning && (
-                  <View style={styles.reasoningBox}>
-                    <Ionicons name="sparkles" size={14} color={COLORS.secondary} />
-                    <Text style={styles.reasoningText}>{datePlan.aiReasoning}</Text>
-                  </View>
-                )}
-              </View>
-
-              {datePlan.status === 'pending' && (
-                <View style={styles.planActions}>
-                  <TouchableOpacity
-                    style={styles.declineBtn}
-                    onPress={() => handleRespond(datePlan.id, false)}
-                    disabled={loading}
-                  >
-                    <Ionicons name="close" size={22} color={COLORS.danger} />
-                    <Text style={styles.declineBtnText}>Decline</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.acceptBtn}
-                    onPress={() => handleRespond(datePlan.id, true)}
-                    disabled={loading}
-                  >
-                    <Ionicons name="checkmark" size={22} color="#fff" />
-                    <Text style={styles.acceptBtnText}>
-                      {loading ? '...' : "I'm in!"}
-                    </Text>
-                  </TouchableOpacity>
+          {/* Step 3: Date plan options */}
+          {step === 'plan' && datePlans.length > 0 && (
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {/* Option tabs */}
+              {datePlans.length > 1 && (
+                <View style={styles.optionTabs}>
+                  {datePlans.map((_, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[
+                        styles.optionTab,
+                        selectedPlanIndex === idx && styles.optionTabActive,
+                      ]}
+                      onPress={() => setSelectedPlanIndex(idx)}
+                    >
+                      <Text style={[
+                        styles.optionTabText,
+                        selectedPlanIndex === idx && styles.optionTabTextActive,
+                      ]}>
+                        Option {idx + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               )}
 
-              {datePlan.status === 'accepted' && (
-                <View style={styles.confirmedBanner}>
-                  <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                  <Text style={styles.confirmedText}>Date confirmed! Have fun!</Text>
-                </View>
-              )}
+              {(() => {
+                const datePlan = datePlans[selectedPlanIndex];
+                if (!datePlan) return null;
+                return (
+                  <View style={styles.planContent}>
+                    <View style={styles.planCard}>
+                      <View style={styles.planIconRow}>
+                        <View style={styles.planIconCircle}>
+                          <Ionicons name="calendar" size={28} color={COLORS.primary} />
+                        </View>
+                      </View>
 
-              {datePlan.status === 'declined' && (
-                <View style={styles.declinedBanner}>
-                  <Ionicons name="close-circle" size={20} color={COLORS.danger} />
-                  <Text style={styles.declinedText}>This plan was declined</Text>
-                </View>
-              )}
-            </View>
+                      <Text style={styles.planActivity}>{datePlan.activity}</Text>
+
+                      {datePlan.venueName && (
+                        <View style={styles.planDetailRow}>
+                          <Ionicons name="location" size={16} color={COLORS.textLight} />
+                          <Text style={styles.planDetailText}>{datePlan.venueName}</Text>
+                        </View>
+                      )}
+
+                      {datePlan.venueAddress && (
+                        <View style={styles.planDetailRow}>
+                          <Ionicons name="map" size={16} color={COLORS.textLight} />
+                          <Text style={styles.planDetailText}>{datePlan.venueAddress}</Text>
+                        </View>
+                      )}
+
+                      {datePlan.suggestedTime && (
+                        <View style={styles.planDetailRow}>
+                          <Ionicons name="time" size={16} color={COLORS.textLight} />
+                          <Text style={styles.planDetailText}>
+                            {new Date(datePlan.suggestedTime).toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                            })} at {new Date(datePlan.suggestedTime).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </View>
+                      )}
+
+                      {datePlan.aiReasoning && (
+                        <View style={styles.reasoningBox}>
+                          <Ionicons name="sparkles" size={14} color={COLORS.secondary} />
+                          <Text style={styles.reasoningText}>{datePlan.aiReasoning}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {datePlan.status === 'pending' && (
+                      <View style={styles.planActions}>
+                        <TouchableOpacity
+                          style={styles.declineBtn}
+                          onPress={() => handleRespond(datePlan.id, false)}
+                          disabled={loading}
+                        >
+                          <Ionicons name="close" size={22} color={COLORS.danger} />
+                          <Text style={styles.declineBtnText}>Decline</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.acceptBtn}
+                          onPress={() => handleRespond(datePlan.id, true)}
+                          disabled={loading}
+                        >
+                          <Ionicons name="checkmark" size={22} color="#fff" />
+                          <Text style={styles.acceptBtnText}>
+                            {loading ? '...' : "I'm in!"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {datePlan.status === 'accepted' && (
+                      <View style={styles.confirmedBanner}>
+                        <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                        <Text style={styles.confirmedText}>Date confirmed! Have fun!</Text>
+                      </View>
+                    )}
+
+                    {datePlan.status === 'declined' && (
+                      <View style={styles.declinedBanner}>
+                        <Ionicons name="close-circle" size={20} color={COLORS.danger} />
+                        <Text style={styles.declinedText}>This plan was declined</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
+            </ScrollView>
           )}
 
-          {step === 'plan' && !datePlan && (
+          {step === 'plan' && datePlans.length === 0 && (
             <View style={styles.waitingContent}>
               <Ionicons name="sparkles" size={48} color={COLORS.secondary} />
               <Text style={styles.waitingTitle}>Generating date plan...</Text>
@@ -402,6 +439,35 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   closeBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  // Option tabs
+  optionTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  optionTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    backgroundColor: COLORS.backgroundDark,
+  },
+  optionTabActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  optionTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textLight,
+  },
+  optionTabTextActive: {
+    color: '#fff',
+  },
   // Plan
   planContent: { padding: 20, gap: 16 },
   planCard: {

@@ -107,12 +107,22 @@ export async function generateDatePlan(
       user1: {
         select: {
           firstName: true,
+          latitude: true,
+          longitude: true,
+          travelLatitude: true,
+          travelLongitude: true,
+          isTravelMode: true,
           interests: { include: { interest: true } },
         },
       },
       user2: {
         select: {
           firstName: true,
+          latitude: true,
+          longitude: true,
+          travelLatitude: true,
+          travelLongitude: true,
+          isTravelMode: true,
           interests: { include: { interest: true } },
         },
       },
@@ -146,7 +156,20 @@ export async function generateDatePlan(
     suggestedTime.setHours(19, 0, 0, 0);
   }
 
-  // Use AI to generate the plan
+  // Get effective locations (use travel location if active)
+  const u1Lat = match.user1.isTravelMode && match.user1.travelLatitude != null
+    ? match.user1.travelLatitude : match.user1.latitude;
+  const u1Lng = match.user1.isTravelMode && match.user1.travelLongitude != null
+    ? match.user1.travelLongitude : match.user1.longitude;
+  const u2Lat = match.user2.isTravelMode && match.user2.travelLatitude != null
+    ? match.user2.travelLatitude : match.user2.latitude;
+  const u2Lng = match.user2.isTravelMode && match.user2.travelLongitude != null
+    ? match.user2.travelLongitude : match.user2.longitude;
+
+  const user1Location = u1Lat != null && u1Lng != null ? { lat: u1Lat, lng: u1Lng } : null;
+  const user2Location = u2Lat != null && u2Lng != null ? { lat: u2Lat, lng: u2Lng } : null;
+
+  // Use AI to generate 3 date options
   const aiSuggestion = await generateAIDatePlan({
     user1Name: match.user1.firstName,
     user2Name: match.user2.firstName,
@@ -155,24 +178,31 @@ export async function generateDatePlan(
     user2Interests: u2InterestNames,
     preferredDay: preferredSlot?.day,
     preferredTime: preferredSlot?.timeFrom,
+    user1Location,
+    user2Location,
   });
 
-  const datePlan = await prisma.datePlan.create({
-    data: {
-      matchId,
-      activity: aiSuggestion.activity,
-      venueName: aiSuggestion.venueName,
-      venueAddress: aiSuggestion.venueAddress,
-      suggestedTime,
-      aiReasoning: aiSuggestion.reasoning,
-    },
-  });
+  // Create a date plan for each option (first option is the primary)
+  const datePlans = [];
+  for (const option of aiSuggestion.options) {
+    const datePlan = await prisma.datePlan.create({
+      data: {
+        matchId,
+        activity: option.activity,
+        venueName: option.venueName,
+        venueAddress: option.venueAddress,
+        suggestedTime,
+        aiReasoning: option.reasoning,
+      },
+    });
+    datePlans.push(datePlan);
+  }
 
-  // Notify both users
+  // Notify both users with all options
   const io = getIO();
-  io.to(`match:${matchId}`).emit('date_plan_ready', { matchId, datePlan });
+  io.to(`match:${matchId}`).emit('date_plan_ready', { matchId, datePlans });
 
-  return datePlan;
+  return datePlans[0]; // Return primary for backward compatibility
 }
 
 export async function respondToPlan(
