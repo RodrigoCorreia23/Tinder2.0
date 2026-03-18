@@ -11,6 +11,7 @@ interface SwipeState {
   likesLoading: boolean;
   superLikeRemaining: number;
   superLikeResetAt: string | null;
+  superLikeIsLifetime: boolean;
 
   loadProfiles: () => Promise<void>;
   loadEnergy: () => Promise<void>;
@@ -30,6 +31,7 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
   likesLoading: false,
   superLikeRemaining: 1,
   superLikeResetAt: null,
+  superLikeIsLifetime: false,
 
   loadProfiles: async () => {
     set({ isLoading: true });
@@ -52,7 +54,11 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
   loadSuperLikeStatus: async () => {
     try {
       const status = await matchService.getSuperLikeStatus();
-      set({ superLikeRemaining: status.remaining, superLikeResetAt: status.resetAt });
+      set({
+        superLikeRemaining: status.remaining,
+        superLikeResetAt: status.resetAt,
+        superLikeIsLifetime: status.isLifetime ?? false,
+      });
     } catch {
       // If endpoint not available yet, keep defaults
     }

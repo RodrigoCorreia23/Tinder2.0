@@ -54,6 +54,9 @@ export default function ProfileScreen() {
   const [showTravelModal, setShowTravelModal] = useState(false);
   const [togglingTravel, setTogglingTravel] = useState(false);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'profile' | 'settings'>('profile');
+
   const router = useRouter();
 
   if (!user) return null;
@@ -562,47 +565,91 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {/* Theme Card */}
-      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="color-palette" size={20} color={COLORS.primary} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Theme</Text>
-        </View>
-        <View style={styles.themeRow}>
-          {([
-            { mode: 'light' as ThemeMode, label: 'Light', icon: 'sunny' as const },
-            { mode: 'dark' as ThemeMode, label: 'Dark', icon: 'moon' as const },
-            { mode: 'system' as ThemeMode, label: 'System', icon: 'phone-portrait' as const },
-          ]).map((opt) => (
-            <TouchableOpacity
-              key={opt.mode}
-              style={[
-                styles.themeOption,
-                {
-                  backgroundColor: themeMode === opt.mode ? COLORS.primary : COLORS.backgroundDark,
-                  borderColor: themeMode === opt.mode ? COLORS.primary : COLORS.border,
-                },
-              ]}
-              onPress={() => setThemeMode(opt.mode)}
-            >
-              <Ionicons
-                name={opt.icon}
-                size={18}
-                color={themeMode === opt.mode ? '#FFFFFF' : COLORS.textLight}
-              />
-              <Text
-                style={[
-                  styles.themeOptionText,
-                  { color: themeMode === opt.mode ? '#FFFFFF' : COLORS.text },
-                ]}
-              >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* Tab Switcher */}
+      <View style={[styles.tabRow, { backgroundColor: COLORS.card }]}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'profile' && { backgroundColor: COLORS.primary }]}
+          onPress={() => setActiveTab('profile')}
+        >
+          <Ionicons name="person" size={18} color={activeTab === 'profile' ? '#fff' : COLORS.textLight} />
+          <Text style={[styles.tabText, { color: activeTab === 'profile' ? '#fff' : COLORS.textLight }]}>Profile</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'settings' && { backgroundColor: COLORS.primary }]}
+          onPress={() => setActiveTab('settings')}
+        >
+          <Ionicons name="settings" size={18} color={activeTab === 'settings' ? '#fff' : COLORS.textLight} />
+          <Text style={[styles.tabText, { color: activeTab === 'settings' ? '#fff' : COLORS.textLight }]}>Settings</Text>
+        </TouchableOpacity>
       </View>
 
+      {activeTab === 'settings' && (
+        <>
+          {/* Theme Card */}
+          <View style={[styles.card, { backgroundColor: COLORS.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="color-palette" size={20} color={COLORS.primary} />
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>Theme</Text>
+            </View>
+            <View style={styles.themeRow}>
+              {([
+                { mode: 'light' as ThemeMode, label: 'Light', icon: 'sunny' as const },
+                { mode: 'dark' as ThemeMode, label: 'Dark', icon: 'moon' as const },
+                { mode: 'system' as ThemeMode, label: 'System', icon: 'phone-portrait' as const },
+              ]).map((opt) => (
+                <TouchableOpacity
+                  key={opt.mode}
+                  style={[
+                    styles.themeOption,
+                    {
+                      backgroundColor: themeMode === opt.mode ? COLORS.primary : COLORS.backgroundDark,
+                      borderColor: themeMode === opt.mode ? COLORS.primary : COLORS.border,
+                    },
+                  ]}
+                  onPress={() => setThemeMode(opt.mode)}
+                >
+                  <Ionicons
+                    name={opt.icon}
+                    size={18}
+                    color={themeMode === opt.mode ? '#FFFFFF' : COLORS.textLight}
+                  />
+                  <Text
+                    style={[
+                      styles.themeOptionText,
+                      { color: themeMode === opt.mode ? '#FFFFFF' : COLORS.text },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Preferences */}
+          <View style={[styles.card, { backgroundColor: COLORS.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="options" size={20} color={COLORS.secondary} />
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>Preferences</Text>
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Looking for</Text>
+              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.lookingFor.join(', ')}</Text>
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Age range</Text>
+              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.ageMin} - {user.ageMax}</Text>
+            </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Max distance</Text>
+              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.maxDistanceKm} km</Text>
+            </View>
+          </View>
+        </>
+      )}
+
+      {activeTab === 'settings' && (
+        <>
       {/* Verification Card */}
       <View style={[styles.card, { backgroundColor: COLORS.card }, user.isVerified ? styles.verifiedCard : null]}>
         <View style={styles.cardHeader}>
@@ -795,6 +842,22 @@ export default function ProfileScreen() {
         </View>
       )}
 
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+
+          {/* Delete Account */}
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+            <Ionicons name="trash-outline" size={20} color="#fff" />
+            <Text style={styles.deleteText}>Delete Account</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {activeTab === 'profile' && (
+        <>
       {/* Reputation Card */}
       <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
@@ -920,24 +983,10 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Settings */}
-      <View style={[styles.card, { backgroundColor: COLORS.card }]}>
-        <Text style={[styles.cardTitle, { color: COLORS.text }]}>Preferences</Text>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Looking for</Text>
-          <Text style={styles.settingValue}>{user.lookingFor.join(', ')}</Text>
-        </View>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Age range</Text>
-          <Text style={styles.settingValue}>{user.ageMin} - {user.ageMax}</Text>
-        </View>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Max distance</Text>
-          <Text style={styles.settingValue}>{user.maxDistanceKm} km</Text>
-        </View>
-      </View>
+        </>
+      )}
 
-      {/* Share Profile */}
+      {/* Share Profile (always visible) */}
       <TouchableOpacity
         style={[styles.shareButton, sharing && { opacity: 0.6 }]}
         onPress={handleShareProfile}
@@ -951,18 +1000,6 @@ export default function ProfileScreen() {
             <Text style={styles.shareButtonText}>Share Profile</Text>
           </>
         )}
-      </TouchableOpacity>
-
-      {/* Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
-
-      {/* Delete Account */}
-      <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
-        <Ionicons name="trash-outline" size={20} color="#fff" />
-        <Text style={styles.deleteText}>Delete Account</Text>
       </TouchableOpacity>
 
       {/* Travel Mode Modal */}
@@ -1194,6 +1231,26 @@ const styles = StyleSheet.create({
   bioEditSaveText: {
     fontSize: 14,
     color: '#fff',
+    fontWeight: '600',
+  },
+  // Tab switcher
+  tabRow: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 4,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  tabText: {
+    fontSize: 15,
     fontWeight: '600',
   },
   // Card styles

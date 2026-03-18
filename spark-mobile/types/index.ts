@@ -50,6 +50,7 @@ export interface Profile {
   distance: number | null;
   photos: Photo[];
   interests: Interest[];
+  isSuperLiker?: boolean;
 }
 
 export interface Match {

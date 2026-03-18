@@ -44,6 +44,7 @@ export default function DiscoverScreen() {
     isLoading,
     lastMatch,
     superLikeRemaining,
+    superLikeIsLifetime,
     loadProfiles,
     loadEnergy,
     swipe,
@@ -178,28 +179,15 @@ export default function DiscoverScreen() {
       swipedProfilesCache.current[targetUserId] = currentProfile;
     }
     try {
-      // swipe() calls the API and returns true if matched
-      const result = await matchService.swipe(targetUserId, direction, isSuperLike);
-
-      // Update store manually
-      const { profiles: currentProfiles, energy: currentEnergy, receivedLikes, superLikeRemaining: slr } = useSwipeStore.getState();
-      useSwipeStore.setState({
-        profiles: currentProfiles.filter((p) => p.id !== targetUserId),
-        receivedLikes: receivedLikes.filter((l) => l.id !== targetUserId),
-        energy: {
-          ...currentEnergy,
-          remaining: result.energyRemaining,
-          resetAt: result.energyResetAt,
-        },
-        superLikeRemaining: isSuperLike ? Math.max(0, slr - 1) : slr,
-      });
+      // Use the store's swipe which calls API and updates state
+      const matched = await swipe(targetUserId, direction, isSuperLike);
 
       // Show match animation immediately if matched
-      if (result.matched && result.matchId) {
-        if (currentProfile) {
-          setMatchedProfile(currentProfile);
+      if (matched) {
+        const profileForAnimation = currentProfile || swipedProfilesCache.current[targetUserId];
+        if (profileForAnimation) {
+          setMatchedProfile(profileForAnimation);
         } else {
-          // Fallback: create basic profile
           setMatchedProfile({
             id: targetUserId,
             firstName: 'Someone',
@@ -331,6 +319,7 @@ export default function DiscoverScreen() {
             energy={energy.remaining}
             isPremium={isPremium}
             superLikeRemaining={superLikeRemaining}
+            superLikeIsLifetime={superLikeIsLifetime}
           />
         ))}
       </View>
@@ -425,6 +414,7 @@ function SwipeCard({
   energy,
   isPremium,
   superLikeRemaining,
+  superLikeIsLifetime,
 }: {
   profile: Profile;
   isTop: boolean;
@@ -433,6 +423,7 @@ function SwipeCard({
   energy: number;
   isPremium: boolean;
   superLikeRemaining: number;
+  superLikeIsLifetime: boolean;
 }) {
   const position = useRef(new Animated.ValueXY()).current;
 
@@ -475,10 +466,22 @@ function SwipeCard({
 
   const doSuperLike = () => {
     if (superLikeRemaining <= 0) {
-      if (Platform.OS === 'web') {
-        window.alert('No super likes remaining today!');
+      if (superLikeIsLifetime && !isPremium) {
+        // Free user used their one-time super like
+        if (Platform.OS === 'web') {
+          window.alert('Super Like is a one-time feature for free users. Upgrade to Premium for 5 daily super likes!');
+        } else {
+          Alert.alert(
+            'No Super Likes',
+            'Super Like is a one-time feature for free users. Upgrade to Premium for 5 daily super likes!'
+          );
+        }
       } else {
-        Alert.alert('No Super Likes', 'You have no super likes remaining today.');
+        if (Platform.OS === 'web') {
+          window.alert('No super likes remaining today!');
+        } else {
+          Alert.alert('No Super Likes', 'You have no super likes remaining today.');
+        }
       }
       resetPosition();
       return;
@@ -535,9 +538,21 @@ function SwipeCard({
 
   return (
     <Animated.View
-      style={[styles.card, animatedStyle]}
+      style={[
+        styles.card,
+        animatedStyle,
+        profile.isSuperLiker && styles.superLikerCard,
+      ]}
       {...(isTop ? panResponder.panHandlers : {})}
     >
+      {/* Super Liker banner */}
+      {profile.isSuperLiker && (
+        <View style={styles.superLikerBanner}>
+          <Ionicons name="star" size={16} color="#fff" />
+          <Text style={styles.superLikerBannerText}>Super Liked you!</Text>
+        </View>
+      )}
+
       {/* Full card photo */}
       <PhotoCarousel
         photos={profile.photos}
@@ -625,10 +640,16 @@ function SwipeCard({
             onPress={doSuperLike}
           >
             <Ionicons name="star" size={24} color="#4FC3F7" />
-            {/* Super like remaining badge */}
-            <View style={styles.superLikeBadge}>
-              <Text style={styles.superLikeBadgeText}>{superLikeRemaining}</Text>
-            </View>
+            {/* Super like remaining badge or lock icon */}
+            {superLikeRemaining <= 0 && superLikeIsLifetime && !isPremium ? (
+              <View style={[styles.superLikeBadge, styles.superLikeLockBadge]}>
+                <Ionicons name="lock-closed" size={10} color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.superLikeBadge}>
+                <Text style={styles.superLikeBadgeText}>{superLikeRemaining}</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -739,6 +760,37 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#1a1a1a',
+  },
+  superLikerCard: {
+    borderWidth: 3,
+    borderColor: '#4FC3F7',
+    shadowColor: '#4FC3F7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  superLikerBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(79, 195, 247, 0.9)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 17,
+    borderTopRightRadius: 17,
+  },
+  superLikerBannerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   gradientOverlay: {
     position: 'absolute',
@@ -914,6 +966,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  superLikeLockBadge: {
+    backgroundColor: '#999',
   },
   rewindActionBtn: {
     width: 44,

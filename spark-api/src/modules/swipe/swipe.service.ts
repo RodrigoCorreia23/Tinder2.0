@@ -84,6 +84,21 @@ export async function getDiscoverProfiles(userId: string) {
     take: 50,
   });
 
+  // Check which candidates have super-liked the current user
+  const candidateIds = candidates.map((c) => c.id);
+  const superLikers = candidateIds.length > 0
+    ? await prisma.swipe.findMany({
+        where: {
+          swipedId: userId,
+          swiperId: { in: candidateIds },
+          direction: 'like',
+          isSuperLike: true,
+        },
+        select: { swiperId: true },
+      })
+    : [];
+  const superLikerIds = new Set(superLikers.map((s) => s.swiperId));
+
   // Enrich with age and distance, filter by distance
   const enriched = candidates
     .map((c) => {
@@ -97,6 +112,7 @@ export async function getDiscoverProfiles(userId: string) {
       }
 
       const isBoosted = c.boostedUntil ? c.boostedUntil > now : false;
+      const isSuperLiker = superLikerIds.has(c.id);
 
       return {
         id: c.id,
@@ -110,12 +126,15 @@ export async function getDiscoverProfiles(userId: string) {
         photos: c.photos,
         interests: c.interests.map((ui) => ui.interest),
         isBoosted,
+        isSuperLiker,
       };
     })
     .filter((c) => c.distance === null || c.distance <= user.maxDistanceKm);
 
-  // Sort: boosted users first, then by reputation
+  // Sort: super-likers first, then boosted, then by reputation
   return enriched.sort((a, b) => {
+    if (a.isSuperLiker && !b.isSuperLiker) return -1;
+    if (!a.isSuperLiker && b.isSuperLiker) return 1;
     if (a.isBoosted && !b.isBoosted) return -1;
     if (!a.isBoosted && b.isBoosted) return 1;
     return b.reputationScore - a.reputationScore;
@@ -164,16 +183,23 @@ export async function createSwipe(
 
   // Super Like validation
   if (isSuperLike && direction === 'like') {
-    let currentSuperLikesUsed = user.superLikesUsedToday;
-
-    // Reset counter if superLikeResetAt is in the past
-    if (user.superLikeResetAt && user.superLikeResetAt < now) {
-      currentSuperLikesUsed = 0;
-    }
-
-    const limit = hasActivePremium ? PREMIUM_SUPER_LIKE_LIMIT : FREE_SUPER_LIKE_LIMIT;
-    if (currentSuperLikesUsed >= limit) {
-      throw new AppError('No super likes remaining today', 429);
+    if (hasActivePremium) {
+      // Premium users: daily limit of 5 with midnight reset
+      let currentSuperLikesUsed = user.superLikesUsedToday;
+      if (user.superLikeResetAt && user.superLikeResetAt < now) {
+        currentSuperLikesUsed = 0;
+      }
+      if (currentSuperLikesUsed >= PREMIUM_SUPER_LIKE_LIMIT) {
+        throw new AppError('No super likes remaining today', 429);
+      }
+    } else {
+      // Free users: 1 super like LIFETIME (no reset ever)
+      if (user.superLikesUsedToday >= FREE_SUPER_LIKE_LIMIT) {
+        throw new AppError(
+          'Super Like is a one-time feature for free users. Upgrade to Premium for 5 daily super likes!',
+          429
+        );
+      }
     }
   }
 
@@ -192,19 +218,25 @@ export async function createSwipe(
 
   // Super Like updates
   if (isSuperLike && direction === 'like') {
-    // Reset counter if needed
-    if (user.superLikeResetAt && user.superLikeResetAt < now) {
-      updateData.superLikesUsedToday = 1; // reset to 0 then increment = 1
-    } else {
-      updateData.superLikesUsedToday = { increment: 1 };
-    }
+    if (hasActivePremium) {
+      // Premium: daily counter with midnight reset
+      if (user.superLikeResetAt && user.superLikeResetAt < now) {
+        updateData.superLikesUsedToday = 1; // reset to 0 then increment = 1
+      } else {
+        updateData.superLikesUsedToday = { increment: 1 };
+      }
 
-    // Set superLikeResetAt to next midnight if not set or expired
-    if (!user.superLikeResetAt || user.superLikeResetAt < now) {
-      const nextMidnight = new Date(now);
-      nextMidnight.setDate(nextMidnight.getDate() + 1);
-      nextMidnight.setHours(0, 0, 0, 0);
-      updateData.superLikeResetAt = nextMidnight;
+      // Set superLikeResetAt to next midnight if not set or expired
+      if (!user.superLikeResetAt || user.superLikeResetAt < now) {
+        const nextMidnight = new Date(now);
+        nextMidnight.setDate(nextMidnight.getDate() + 1);
+        nextMidnight.setHours(0, 0, 0, 0);
+        updateData.superLikeResetAt = nextMidnight;
+      }
+    } else {
+      // Free: lifetime counter, no reset
+      updateData.superLikesUsedToday = { increment: 1 };
+      // No superLikeResetAt for free users - it never resets
     }
   }
 
@@ -250,20 +282,32 @@ export async function createSwipe(
     if (!reciprocal) {
       // No mutual like yet — notify target that someone liked them (anonymous)
       const io = getIO();
+      const likeMessage = isSuperLike
+        ? "Someone super liked you! They must really like your profile."
+        : 'Someone liked you!';
       io.to(`user:${targetUserId}`).emit('new_like', {
-        message: 'Someone liked you!',
+        message: likeMessage,
         isSuperLike: isSuperLike || false,
       });
 
       // Send push notification if target is offline
       const targetOnline = await isUserOnline(targetUserId);
       if (!targetOnline) {
-        sendPushToUser(
-          targetUserId,
-          'Someone likes you!',
-          'Open Spark to find out who it could be',
-          { type: 'new_like' }
-        );
+        if (isSuperLike) {
+          sendPushToUser(
+            targetUserId,
+            'Super Like!',
+            'Someone super liked you! Open Spark to find out who.',
+            { type: 'new_like', isSuperLike: true }
+          );
+        } else {
+          sendPushToUser(
+            targetUserId,
+            'Someone likes you!',
+            'Open Spark to find out who it could be',
+            { type: 'new_like' }
+          );
+        }
       }
     }
 
@@ -367,18 +411,27 @@ export async function getSuperLikeStatus(userId: string) {
 
   const now = new Date();
   const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
-  const limit = hasActivePremium ? PREMIUM_SUPER_LIKE_LIMIT : FREE_SUPER_LIKE_LIMIT;
 
-  let used = user.superLikesUsedToday;
-  // If reset time has passed, counter is effectively 0
-  if (user.superLikeResetAt && user.superLikeResetAt < now) {
-    used = 0;
+  if (hasActivePremium) {
+    // Premium: daily limit with midnight reset
+    let used = user.superLikesUsedToday;
+    if (user.superLikeResetAt && user.superLikeResetAt < now) {
+      used = 0;
+    }
+    return {
+      remaining: Math.max(0, PREMIUM_SUPER_LIKE_LIMIT - used),
+      resetAt: user.superLikeResetAt?.toISOString() || null,
+      isLifetime: false,
+    };
+  } else {
+    // Free: 1 super like lifetime, no reset
+    const used = user.superLikesUsedToday;
+    return {
+      remaining: Math.max(0, FREE_SUPER_LIKE_LIMIT - used),
+      resetAt: null,
+      isLifetime: true,
+    };
   }
-
-  return {
-    remaining: Math.max(0, limit - used),
-    resetAt: user.superLikeResetAt?.toISOString() || null,
-  };
 }
 
 export async function getReceivedLikes(userId: string) {
