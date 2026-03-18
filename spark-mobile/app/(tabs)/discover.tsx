@@ -27,6 +27,7 @@ import { Profile } from '@/types';
 import MatchAnimation from '@/components/match/MatchAnimation';
 import PhotoCarousel from '@/components/ui/PhotoCarousel';
 import * as userService from '@/services/user.service';
+import * as matchService from '@/services/match.service';
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width - 20;
@@ -171,16 +172,47 @@ export default function DiscoverScreen() {
   }, [lastMatch]);
 
   const handleSwipe = async (targetUserId: string, direction: 'like' | 'pass', isSuperLike?: boolean) => {
-    // Cache profile before swipe removes it from the list
-    const profileToCache = profiles.find((p) => p.id === targetUserId);
-    if (profileToCache) {
-      swipedProfilesCache.current[targetUserId] = profileToCache;
+    // Save profile BEFORE swipe removes it from the list
+    const currentProfile = profiles.find((p) => p.id === targetUserId);
+    if (currentProfile) {
+      swipedProfilesCache.current[targetUserId] = currentProfile;
     }
     try {
-      const matched = await swipe(targetUserId, direction, isSuperLike);
-      // If swipe returned a match, show animation immediately
-      if (matched && profileToCache) {
-        setMatchedProfile(profileToCache);
+      // swipe() calls the API and returns true if matched
+      const result = await matchService.swipe(targetUserId, direction, isSuperLike);
+
+      // Update store manually
+      const { profiles: currentProfiles, energy: currentEnergy, receivedLikes, superLikeRemaining: slr } = useSwipeStore.getState();
+      useSwipeStore.setState({
+        profiles: currentProfiles.filter((p) => p.id !== targetUserId),
+        receivedLikes: receivedLikes.filter((l) => l.id !== targetUserId),
+        energy: {
+          ...currentEnergy,
+          remaining: result.energyRemaining,
+          resetAt: result.energyResetAt,
+        },
+        superLikeRemaining: isSuperLike ? Math.max(0, slr - 1) : slr,
+      });
+
+      // Show match animation immediately if matched
+      if (result.matched && result.matchId) {
+        if (currentProfile) {
+          setMatchedProfile(currentProfile);
+        } else {
+          // Fallback: create basic profile
+          setMatchedProfile({
+            id: targetUserId,
+            firstName: 'Someone',
+            age: 0,
+            gender: '',
+            bio: null,
+            reputationScore: 50,
+            isVerified: false,
+            distance: null,
+            photos: [],
+            interests: [],
+          });
+        }
         loadMatches();
       }
     } catch (err) {

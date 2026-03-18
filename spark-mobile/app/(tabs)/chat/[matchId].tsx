@@ -11,6 +11,7 @@ import {
   Image,
   Animated,
   Alert as RNAlert,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +43,8 @@ export default function ChatScreen() {
   const [showDatePlan, setShowDatePlan] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const [iceBreakers, setIceBreakers] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,112 +82,41 @@ export default function ChatScreen() {
 
   const currentMatch = matches.find((m) => m.id === matchId);
 
-  // Header: actions menu
-  const showActionsMenu = () => {
-    if (Platform.OS === 'web') {
-      const choice = window.prompt(
-        'Choose an action:\n1. View Profile\n2. Unmatch\n3. Block\n4. Report\n\nEnter number:'
-      );
-      if (choice === '1') setShowProfile(true);
-      else if (choice === '2') handleUnmatch();
-      else if (choice === '3') handleBlock();
-      else if (choice === '4') handleReport();
-    } else {
-      RNAlert.alert('Actions', undefined, [
-        { text: 'View Profile', onPress: () => setShowProfile(true) },
-        { text: 'Unmatch', style: 'destructive', onPress: handleUnmatch },
-        { text: 'Block', style: 'destructive', onPress: handleBlock },
-        { text: 'Report', style: 'destructive', onPress: handleReport },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  };
+  const REPORT_REASONS = ['Inappropriate content', 'Spam', 'Harassment', 'Fake profile', 'Other'];
 
-  const handleUnmatch = () => {
-    const doUnmatch = async () => {
-      try {
-        await matchService.unmatch(matchId!);
-        await loadMatches();
-        if (navigation.canGoBack()) navigation.goBack();
-      } catch {
-        // silent
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to unmatch? This cannot be undone.')) {
-        doUnmatch();
-      }
-    } else {
-      RNAlert.alert('Unmatch', 'Are you sure you want to unmatch? This cannot be undone.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Unmatch', style: 'destructive', onPress: doUnmatch },
-      ]);
+  const handleUnmatch = async () => {
+    setShowActions(false);
+    try {
+      await matchService.unmatch(matchId!);
+      await loadMatches();
+      if (navigation.canGoBack()) navigation.goBack();
+    } catch {
+      // silent
     }
   };
 
   const handleBlock = async () => {
+    setShowActions(false);
     const otherUserId = currentMatch?.otherUser.id;
     if (!otherUserId) return;
-
-    const doBlock = async () => {
-      try {
-        await blockService.blockUser(otherUserId);
-        await loadMatches();
-        if (navigation.canGoBack()) navigation.goBack();
-      } catch {
-        // silent
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      if (window.confirm('Block this user? They will no longer be able to contact you.')) {
-        doBlock();
-      }
-    } else {
-      RNAlert.alert('Block User', 'Block this user? They will no longer be able to contact you.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Block', style: 'destructive', onPress: doBlock },
-      ]);
+    try {
+      await blockService.blockUser(otherUserId);
+      await loadMatches();
+      if (navigation.canGoBack()) navigation.goBack();
+    } catch {
+      // silent
     }
   };
 
-  const handleReport = () => {
+  const handleReport = async (reason: string) => {
+    setShowReportModal(false);
+    setShowActions(false);
     const otherUserId = currentMatch?.otherUser.id;
     if (!otherUserId) return;
-
-    const reasons = ['Inappropriate content', 'Spam', 'Harassment', 'Fake profile', 'Other'];
-
-    if (Platform.OS === 'web') {
-      const choice = window.prompt(
-        'Select a reason:\n' +
-        reasons.map((r, i) => `${i + 1}. ${r}`).join('\n') +
-        '\n\nEnter number:'
-      );
-      const idx = parseInt(choice || '', 10) - 1;
-      if (idx >= 0 && idx < reasons.length) {
-        blockService.reportUser({ reportedId: otherUserId, reason: reasons[idx] });
-        if (Platform.OS === 'web') window.alert('Report submitted. Thank you.');
-      }
-    } else {
-      RNAlert.alert(
-        'Report User',
-        'Select a reason for reporting:',
-        [
-          ...reasons.map((reason) => ({
-            text: reason,
-            onPress: async () => {
-              try {
-                await blockService.reportUser({ reportedId: otherUserId, reason });
-                RNAlert.alert('Report Submitted', 'Thank you for your report.');
-              } catch {
-                // silent
-              }
-            },
-          })),
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+    try {
+      await blockService.reportUser({ reportedId: otherUserId, reason });
+    } catch {
+      // silent
     }
   };
 
@@ -211,7 +143,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         ),
         headerRight: () => (
-          <TouchableOpacity onPress={showActionsMenu} style={{ paddingHorizontal: 12 }}>
+          <TouchableOpacity onPress={() => setShowActions(true)} style={{ paddingHorizontal: 12 }}>
             <Ionicons name="ellipsis-vertical" size={22} color={COLORS.text} />
           </TouchableOpacity>
         ),
@@ -442,6 +374,89 @@ export default function ChatScreen() {
         onClose={() => setShowGifPicker(false)}
         onSelect={handleSendGif}
       />
+
+      {/* Actions Modal */}
+      <Modal visible={showActions} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.actionsOverlay}
+          activeOpacity={1}
+          onPress={() => setShowActions(false)}
+        >
+          <View style={[styles.actionsSheet, { backgroundColor: C.card }]}>
+            <Text style={[styles.actionsTitle, { color: C.text }]}>Actions</Text>
+
+            <TouchableOpacity
+              style={[styles.actionsItem, { borderBottomColor: C.border }]}
+              onPress={() => { setShowActions(false); setShowProfile(true); }}
+            >
+              <Ionicons name="person-outline" size={22} color={C.text} />
+              <Text style={[styles.actionsItemText, { color: C.text }]}>View Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionsItem, { borderBottomColor: C.border }]}
+              onPress={handleUnmatch}
+            >
+              <Ionicons name="heart-dislike-outline" size={22} color={COLORS.warning} />
+              <Text style={[styles.actionsItemText, { color: COLORS.warning }]}>Unmatch</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionsItem, { borderBottomColor: C.border }]}
+              onPress={handleBlock}
+            >
+              <Ionicons name="ban-outline" size={22} color={COLORS.danger} />
+              <Text style={[styles.actionsItemText, { color: COLORS.danger }]}>Block User</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionsItem, { borderBottomWidth: 0 }]}
+              onPress={() => { setShowActions(false); setShowReportModal(true); }}
+            >
+              <Ionicons name="flag-outline" size={22} color={COLORS.danger} />
+              <Text style={[styles.actionsItemText, { color: COLORS.danger }]}>Report</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionsCancelBtn}
+              onPress={() => setShowActions(false)}
+            >
+              <Text style={styles.actionsCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Report Modal */}
+      <Modal visible={showReportModal} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.actionsOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReportModal(false)}
+        >
+          <View style={[styles.actionsSheet, { backgroundColor: C.card }]}>
+            <Text style={[styles.actionsTitle, { color: C.text }]}>Report User</Text>
+            <Text style={{ fontSize: 13, color: C.textLight, marginBottom: 8 }}>
+              Select a reason for reporting:
+            </Text>
+            {REPORT_REASONS.map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                style={[styles.actionsItem, { borderBottomColor: C.border }]}
+                onPress={() => handleReport(reason)}
+              >
+                <Text style={[styles.actionsItemText, { color: C.text }]}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.actionsCancelBtn}
+              onPress={() => setShowReportModal(false)}
+            >
+              <Text style={styles.actionsCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -605,5 +620,46 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     backgroundColor: COLORS.border,
+  },
+  // Actions modal
+  actionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionsSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  actionsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  actionsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  actionsItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  actionsCancelBtn: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(128,128,128,0.15)',
+  },
+  actionsCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#888',
   },
 });
