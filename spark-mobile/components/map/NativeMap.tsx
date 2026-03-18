@@ -65,8 +65,31 @@ export default function NativeMap({ latitude, longitude, nearbyUsers, onPinPress
 
       users.forEach((user, index) => {
         const photoUrl = user.photo ? user.photo.url : 'https://placehold.co/60x60/FF6B6B/ffffff?text=' + user.firstName[0];
+
+        // Pin color based on swipe status
+        var borderColor = '${COLORS.primary}';
+        var shadowColor = 'rgba(255,107,107,0.5)';
+        var opacity = '1';
+        var imgFilter = '';
+        var statusIndicator = '';
+
+        if (user.swipeStatus === 'matched') {
+          borderColor = '#FFD700';
+          shadowColor = 'rgba(255,215,0,0.6)';
+          statusIndicator = '<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#2ECC71;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:10px;color:white;">&#10003;</div>';
+        } else if (user.swipeStatus === 'liked') {
+          borderColor = '#3498DB';
+          shadowColor = 'rgba(52,152,219,0.5)';
+          statusIndicator = '<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#3498DB;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:10px;color:white;">&#9829;</div>';
+        } else if (user.swipeStatus === 'passed') {
+          borderColor = '#BDC3C7';
+          shadowColor = 'rgba(0,0,0,0.15)';
+          opacity = '0.6';
+          imgFilter = 'filter:grayscale(70%);';
+        }
+
         const icon = L.divIcon({
-          html: '<div style="width:50px;height:50px;border-radius:50%;border:3px solid ${COLORS.primary};overflow:hidden;background:white;box-shadow:0 2px 10px rgba(255,107,107,0.5);"><img src="' + photoUrl + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.src=\\'https://placehold.co/60x60/FF6B6B/ffffff?text=' + user.firstName[0] + '\\'"/></div>',
+          html: '<div style="position:relative;width:50px;height:50px;opacity:' + opacity + ';"><div style="width:50px;height:50px;border-radius:50%;border:3px solid ' + borderColor + ';overflow:hidden;background:white;box-shadow:0 2px 10px ' + shadowColor + ';"><img src="' + photoUrl + '" style="width:100%;height:100%;object-fit:cover;display:block;' + imgFilter + '" onerror="this.src=\\'https://placehold.co/60x60/FF6B6B/ffffff?text=' + user.firstName[0] + '\\'"/></div>' + statusIndicator + '</div>',
           iconSize: [50, 50],
           iconAnchor: [25, 25],
           className: '',

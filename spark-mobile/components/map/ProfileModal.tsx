@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { COLORS } from '@/utils/constants';
 import { NearbyUser } from '@/types';
 import PhotoCarousel from '@/components/ui/PhotoCarousel';
@@ -22,7 +23,11 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ user, onClose, onLike, onPass }: ProfileModalProps) {
+  const router = useRouter();
+
   if (!user) return null;
+
+  const { swipeStatus, matchId } = user;
 
   return (
     <Modal visible={!!user} transparent animationType="slide">
@@ -41,6 +46,42 @@ export default function ProfileModal({ user, onClose, onLike, onPass }: ProfileM
               height={350}
               fallbackText={user.firstName[0]}
             />
+
+            {/* Match banner */}
+            {swipeStatus === 'matched' && (
+              <View style={styles.matchBanner}>
+                <Ionicons name="sparkles" size={18} color="#FFD700" />
+                <Text style={styles.matchBannerText}>It's a Match!</Text>
+                <TouchableOpacity
+                  style={styles.chatBtn}
+                  onPress={() => {
+                    onClose();
+                    if (matchId) {
+                      router.push(`/chat/${matchId}`);
+                    }
+                  }}
+                >
+                  <Ionicons name="chatbubble" size={14} color="#fff" />
+                  <Text style={styles.chatBtnText}>Chat</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Liked badge */}
+            {swipeStatus === 'liked' && (
+              <View style={styles.likedBadge}>
+                <Ionicons name="heart" size={14} color="#3498DB" />
+                <Text style={styles.likedBadgeText}>You liked this person</Text>
+              </View>
+            )}
+
+            {/* Passed badge */}
+            {swipeStatus === 'passed' && (
+              <View style={styles.passedBadge}>
+                <Ionicons name="close-circle" size={14} color="#999" />
+                <Text style={styles.passedBadgeText}>You passed on this person</Text>
+              </View>
+            )}
 
             {/* Info */}
             <View style={styles.info}>
@@ -91,27 +132,66 @@ export default function ProfileModal({ user, onClose, onLike, onPass }: ProfileM
             </View>
           </ScrollView>
 
-          {/* Action buttons */}
+          {/* Action buttons - vary based on swipe status */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.passBtn}
-              onPress={() => {
-                onPass();
-                onClose();
-              }}
-            >
-              <Ionicons name="close" size={32} color={COLORS.danger} />
-            </TouchableOpacity>
+            {swipeStatus === 'matched' ? (
+              <TouchableOpacity
+                style={styles.chatActionBtn}
+                onPress={() => {
+                  onClose();
+                  if (matchId) {
+                    router.push(`/chat/${matchId}`);
+                  }
+                }}
+              >
+                <Ionicons name="chatbubble" size={24} color="#fff" />
+                <Text style={styles.chatActionText}>Open Chat</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                {/* Show Pass button only if not already passed */}
+                {swipeStatus !== 'passed' && (
+                  <TouchableOpacity
+                    style={styles.passBtn}
+                    onPress={() => {
+                      onPass();
+                      onClose();
+                    }}
+                  >
+                    <Ionicons name="close" size={32} color={COLORS.danger} />
+                  </TouchableOpacity>
+                )}
 
-            <TouchableOpacity
-              style={styles.likeBtn}
-              onPress={() => {
-                onLike(user.id);
-                onClose();
-              }}
-            >
-              <Ionicons name="heart" size={32} color="#fff" />
-            </TouchableOpacity>
+                {/* Show Like button only if not already liked */}
+                {swipeStatus !== 'liked' && (
+                  <TouchableOpacity
+                    style={styles.likeBtn}
+                    onPress={() => {
+                      onLike(user.id);
+                      onClose();
+                    }}
+                  >
+                    <Ionicons name="heart" size={32} color="#fff" />
+                  </TouchableOpacity>
+                )}
+
+                {/* If already liked, show a disabled indicator */}
+                {swipeStatus === 'liked' && (
+                  <View style={styles.alreadyActionedBtn}>
+                    <Ionicons name="heart" size={28} color="#3498DB" />
+                    <Text style={styles.alreadyActionedText}>Liked</Text>
+                  </View>
+                )}
+
+                {/* If already passed, show a disabled indicator */}
+                {swipeStatus === 'passed' && (
+                  <View style={styles.alreadyActionedBtn}>
+                    <Ionicons name="close-circle" size={28} color="#999" />
+                    <Text style={styles.alreadyActionedText}>Passed</Text>
+                  </View>
+                )}
+              </>
+            )}
           </View>
         </View>
       </View>
@@ -150,6 +230,66 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
+  },
+  // Match banner
+  matchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1A5E1A',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  matchBannerText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    flex: 1,
+  },
+  chatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  chatBtnText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  // Liked badge
+  likedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  likedBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3498DB',
+  },
+  // Passed badge
+  passedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  passedBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999',
   },
   info: {
     padding: 20,
@@ -291,5 +431,36 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  chatActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2ECC71',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 28,
+    shadowColor: '#2ECC71',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  chatActionText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  alreadyActionedBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  alreadyActionedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
   },
 });

@@ -22,6 +22,8 @@ export async function getDiscoverProfiles(userId: string) {
       longitude: true,
       maxDistanceKm: true,
       reputationScore: true,
+      isPremium: true,
+      premiumUntil: true,
       isTravelMode: true,
       travelLatitude: true,
       travelLongitude: true,
@@ -129,7 +131,15 @@ export async function getDiscoverProfiles(userId: string) {
         isSuperLiker,
       };
     })
-    .filter((c) => c.distance === null || c.distance <= user.maxDistanceKm);
+    .filter((c) => {
+      // Determine map radius: premium users see 5km on map, free users see 1km
+      const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+      const mapRadiusKm = hasActivePremium ? 5 : 1;
+
+      // Only show people OUTSIDE the map radius but within maxDistanceKm
+      // People within the map radius only appear on the map, not in discover
+      return c.distance === null || (c.distance > mapRadiusKm && c.distance <= user.maxDistanceKm);
+    });
 
   // Sort: super-likers first, then boosted, then by reputation
   return enriched.sort((a, b) => {

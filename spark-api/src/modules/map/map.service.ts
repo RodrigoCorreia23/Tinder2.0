@@ -97,13 +97,50 @@ export async function getNearbyUsers(
 
   const userInterestIds = new Set(user.interests.map((i) => i.interestId));
 
-  // Randomize locations for privacy and calculate exact distance
-  return nearbyUsers
-    .filter((u) => {
-      if (!u.latitude || !u.longitude) return false;
-      const dist = haversineMeters(effectiveLat, effectiveLng, u.latitude, u.longitude);
-      return dist <= radiusMeters;
-    })
+  // Filter to users within radius
+  const filteredUsers = nearbyUsers.filter((u) => {
+    if (!u.latitude || !u.longitude) return false;
+    const dist = haversineMeters(effectiveLat, effectiveLng, u.latitude, u.longitude);
+    return dist <= radiusMeters;
+  });
+
+  // Get swipe status for nearby users
+  const nearbyUserIds = filteredUsers.map((u) => u.id);
+
+  const swipes = nearbyUserIds.length > 0
+    ? await prisma.swipe.findMany({
+        where: {
+          swiperId: userId,
+          swipedId: { in: nearbyUserIds },
+        },
+        select: { swipedId: true, direction: true },
+      })
+    : [];
+
+  const swipeMap = new Map(swipes.map((s) => [s.swipedId, s.direction]));
+
+  // Get active matches with nearby users
+  const matches = nearbyUserIds.length > 0
+    ? await prisma.match.findMany({
+        where: {
+          status: 'active',
+          OR: [
+            { user1Id: userId, user2Id: { in: nearbyUserIds } },
+            { user2Id: userId, user1Id: { in: nearbyUserIds } },
+          ],
+        },
+        select: { id: true, user1Id: true, user2Id: true },
+      })
+    : [];
+
+  const matchMap = new Map<string, string>();
+  matches.forEach((m) => {
+    const otherUserId = m.user1Id === userId ? m.user2Id : m.user1Id;
+    matchMap.set(otherUserId, m.id);
+  });
+
+  // Randomize locations for privacy and enrich with swipe status
+  return filteredUsers
     .map((u) => {
       const randomized = randomizeCoordinates(u.latitude!, u.longitude!, 50);
       const age = Math.floor(
@@ -114,6 +151,17 @@ export async function getNearbyUsers(
       const commonInterestsCount = u.interests.filter(
         (ui) => userInterestIds.has(ui.interestId)
       ).length;
+
+      // Determine swipe status: matched > liked/passed > null
+      let swipeStatus: 'liked' | 'passed' | 'matched' | null = null;
+      let matchId: string | null = null;
+
+      if (matchMap.has(u.id)) {
+        swipeStatus = 'matched';
+        matchId = matchMap.get(u.id)!;
+      } else if (swipeMap.has(u.id)) {
+        swipeStatus = swipeMap.get(u.id) === 'like' ? 'liked' : 'passed';
+      }
 
       return {
         id: u.id,
@@ -128,6 +176,8 @@ export async function getNearbyUsers(
         isOnline: isUserOnline(u.id),
         lastActiveAt: u.lastActiveAt,
         location: randomized, // Never real location
+        swipeStatus,
+        matchId,
       };
     })
     .filter((u) => {

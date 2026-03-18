@@ -93,6 +93,8 @@ export interface NearbyUser {
   isOnline: boolean;
   lastActiveAt: string;
   location: { lat: number; lng: number };
+  swipeStatus?: 'liked' | 'passed' | 'matched' | null;
+  matchId?: string | null;
 }
 
 export interface ReceivedLike {
