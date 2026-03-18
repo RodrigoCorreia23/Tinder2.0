@@ -1,5 +1,7 @@
+import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useSwipeStore } from '@/store/swipeStore';
@@ -10,6 +12,7 @@ export default function TabsLayout() {
   // Initialize push notifications
   useNotifications();
 
+  const insets = useSafeAreaInsets();
   const COLORS = useColors();
   const likesCount = useSwipeStore((s) => s.receivedLikes.length);
   const matches = useChatStore((s) => s.matches);
@@ -30,8 +33,8 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: COLORS.background,
           borderTopColor: COLORS.border,
-          height: 88,
-          paddingBottom: 28,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
           paddingTop: 8,
         },
         headerStyle: { backgroundColor: COLORS.background },

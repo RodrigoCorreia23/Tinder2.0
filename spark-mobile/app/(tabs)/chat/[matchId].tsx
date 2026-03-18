@@ -126,7 +126,8 @@ export default function ChatScreen() {
     if (match) {
       const photoUrl = match.otherUser.photos[0]?.url;
       navigation.setOptions({
-        headerStyle: { backgroundColor: C.backgroundDark },
+        headerStyle: { backgroundColor: C.background },
+        headerShadowVisible: false,
         headerTitle: () => (
           <TouchableOpacity
             onPress={() => setShowProfile(true)}
@@ -138,14 +139,15 @@ export default function ChatScreen() {
                 style={{ width: 32, height: 32, borderRadius: 16 }}
               />
             ) : null}
-            <Text style={{ fontSize: 17, fontWeight: 'bold', color: C.text }}>
+            <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#FFFFFF' }}>
               {match.otherUser.firstName}
             </Text>
           </TouchableOpacity>
         ),
+        headerTintColor: '#FFFFFF',
         headerRight: () => (
           <TouchableOpacity onPress={() => setShowActions(true)} style={{ paddingHorizontal: 12 }}>
-            <Ionicons name="ellipsis-vertical" size={22} color={C.text} />
+            <Ionicons name="ellipsis-vertical" size={22} color="#FFFFFF" />
           </TouchableOpacity>
         ),
       });
@@ -276,8 +278,8 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: C.backgroundDark }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
     >
       <FlatList
         ref={flatListRef}

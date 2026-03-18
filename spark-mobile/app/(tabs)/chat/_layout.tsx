@@ -6,9 +6,10 @@ export default function ChatLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: C.backgroundDark },
-        headerTintColor: C.text,
-        headerTitleStyle: { fontWeight: 'bold' },
+        headerStyle: { backgroundColor: C.background },
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: { fontWeight: 'bold', color: '#FFFFFF' },
+        headerShadowVisible: false,
       }}
     />
   );
