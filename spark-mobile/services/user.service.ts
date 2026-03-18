@@ -96,3 +96,13 @@ export async function disableTravelMode() {
   const res = await api.delete('/users/me/travel');
   return res.data;
 }
+
+export async function createCheckout(tier: 'premium' | 'gold') {
+  const res = await api.post('/payments/checkout', { tier });
+  return res.data as { url: string; sessionId: string };
+}
+
+export async function activatePremiumDebug(tier: 'premium' | 'gold') {
+  const res = await api.post('/users/me/premium-debug', { tier });
+  return res.data;
+}

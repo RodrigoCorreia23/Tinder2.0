@@ -5,11 +5,13 @@ import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useLanguageStore } from '@/store/languageStore';
 import { useColors } from '@/hooks/useColors';
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
   const initializeTheme = useThemeStore((s) => s.initialize);
+  const initializeLanguage = useLanguageStore((s) => s.initialize);
   const updateSystemTheme = useThemeStore((s) => s.updateSystemTheme);
   const mode = useThemeStore((s) => s.mode);
   const isDark = useThemeStore((s) => s.isDark);
@@ -19,6 +21,7 @@ export default function RootLayout() {
   useEffect(() => {
     initialize();
     initializeTheme(systemScheme === 'dark');
+    initializeLanguage();
     checkForUpdates();
   }, []);
 

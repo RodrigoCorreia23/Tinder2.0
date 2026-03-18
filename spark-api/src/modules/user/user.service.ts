@@ -25,6 +25,7 @@ export async function getProfile(userId: string) {
       isVerified: true,
       isPremium: true,
       premiumUntil: true,
+      premiumTier: true,
       boostedUntil: true,
       isTravelMode: true,
       travelLatitude: true,
@@ -395,6 +396,15 @@ export async function enableTravelMode(
       travelLongitude: true,
       travelCity: true,
     },
+  });
+}
+
+export async function activatePremiumDebug(userId: string, tier: 'premium' | 'gold') {
+  const premiumUntil = new Date();
+  premiumUntil.setDate(premiumUntil.getDate() + 7); // 7 days
+  return prisma.user.update({
+    where: { id: userId },
+    data: { isPremium: true, premiumUntil, premiumTier: tier },
   });
 }
 

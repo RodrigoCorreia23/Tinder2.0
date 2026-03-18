@@ -29,6 +29,7 @@ model User {
   // Premium
   isPremium     Boolean  @default(false) @map("is_premium")
   premiumUntil  DateTime? @map("premium_until")
+  premiumTier   String?  @map("premium_tier") // 'premium' or 'gold'
 
   // Anti-Ghosting / Reputation
   reputationScore Float @default(50) @map("reputation_score")

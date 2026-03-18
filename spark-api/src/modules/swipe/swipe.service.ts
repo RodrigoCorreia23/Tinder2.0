@@ -24,6 +24,7 @@ export async function getDiscoverProfiles(userId: string) {
       reputationScore: true,
       isPremium: true,
       premiumUntil: true,
+      premiumTier: true,
       isTravelMode: true,
       travelLatitude: true,
       travelLongitude: true,
@@ -79,6 +80,9 @@ export async function getDiscoverProfiles(userId: string) {
       latitude: true,
       longitude: true,
       boostedUntil: true,
+      isPremium: true,
+      premiumUntil: true,
+      premiumTier: true,
       photos: { orderBy: { position: 'asc' } },
       interests: { include: { interest: true } },
     },
@@ -101,6 +105,20 @@ export async function getDiscoverProfiles(userId: string) {
     : [];
   const superLikerIds = new Set(superLikers.map((s) => s.swiperId));
 
+  // Also find people who gave a regular like (not super like)
+  const regularLikers = candidateIds.length > 0
+    ? await prisma.swipe.findMany({
+        where: {
+          swiperId: { in: candidateIds },
+          swipedId: userId,
+          direction: 'like',
+          isSuperLike: false,
+        },
+        select: { swiperId: true },
+      })
+    : [];
+  const regularLikerIds = new Set(regularLikers.map((s) => s.swiperId));
+
   // Enrich with age and distance, filter by distance
   const enriched = candidates
     .map((c) => {
@@ -113,7 +131,9 @@ export async function getDiscoverProfiles(userId: string) {
         distance = haversineKm(effectiveLat, effectiveLng, c.latitude, c.longitude);
       }
 
-      const isBoosted = c.boostedUntil ? c.boostedUntil > now : false;
+      // Gold tier users are always boosted (priority in discover)
+      const isGoldUser = c.isPremium && c.premiumUntil && c.premiumUntil > now && c.premiumTier === 'gold';
+      const isBoosted = isGoldUser || (c.boostedUntil ? c.boostedUntil > now : false);
       const isSuperLiker = superLikerIds.has(c.id);
 
       return {
@@ -129,26 +149,44 @@ export async function getDiscoverProfiles(userId: string) {
         interests: c.interests.map((ui) => ui.interest),
         isBoosted,
         isSuperLiker,
+        isLiker: regularLikerIds.has(c.id),
       };
     })
-    .filter((c) => {
-      // Determine map radius: premium users see 5km on map, free users see 1km
-      const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
-      const mapRadiusKm = hasActivePremium ? 5 : 1;
+    .filter((c) => c.distance === null || c.distance <= user.maxDistanceKm);
 
-      // Only show people OUTSIDE the map radius but within maxDistanceKm
-      // People within the map radius only appear on the map, not in discover
-      return c.distance === null || (c.distance > mapRadiusKm && c.distance <= user.maxDistanceKm);
-    });
+  // Determine map radius for sorting
+  const hasActivePremiumSort = user.isPremium && user.premiumUntil && user.premiumUntil > now;
+  const mapRadiusKm = hasActivePremiumSort ? 20 : 5;
 
-  // Sort: super-likers first, then boosted, then by reputation
-  return enriched.sort((a, b) => {
-    if (a.isSuperLiker && !b.isSuperLiker) return -1;
-    if (!a.isSuperLiker && b.isSuperLiker) return 1;
-    if (a.isBoosted && !b.isBoosted) return -1;
-    if (!a.isBoosted && b.isBoosted) return 1;
-    return b.reputationScore - a.reputationScore;
-  });
+  // Separate into groups
+  const superLikerProfiles = enriched.filter((c) => c.isSuperLiker);
+  const boostedProfiles = enriched.filter((c) => !c.isSuperLiker && c.isBoosted);
+  const likerProfiles = enriched.filter((c) => !c.isSuperLiker && !c.isBoosted && c.isLiker);
+  const outsideProfiles = enriched
+    .filter((c) => !c.isSuperLiker && !c.isBoosted && !c.isLiker && c.distance !== null && c.distance > mapRadiusKm)
+    .sort((a, b) => b.reputationScore - a.reputationScore);
+  const insideProfiles = enriched
+    .filter((c) => !c.isSuperLiker && !c.isBoosted && !c.isLiker && (c.distance === null || c.distance <= mapRadiusKm))
+    .sort((a, b) => b.reputationScore - a.reputationScore);
+
+  // Build final list: super likers first, then boosted, then intercalate likers every 5 positions among regular profiles
+  const result = [...superLikerProfiles, ...boostedProfiles];
+  const regularPool = [...outsideProfiles, ...insideProfiles];
+  const likerQueue = [...likerProfiles];
+
+  let regularCount = 0;
+  for (const profile of regularPool) {
+    regularCount++;
+    // Insert a liker every 5 regular profiles
+    if (regularCount % 5 === 0 && likerQueue.length > 0) {
+      result.push(likerQueue.shift()!);
+    }
+    result.push(profile);
+  }
+  // Add remaining likers at the end
+  result.push(...likerQueue);
+
+  return result;
 }
 
 export async function createSwipe(
@@ -165,6 +203,7 @@ export async function createSwipe(
       energyResetAt: true,
       isPremium: true,
       premiumUntil: true,
+      premiumTier: true,
       superLikesUsedToday: true,
       superLikeResetAt: true,
     },
@@ -193,7 +232,9 @@ export async function createSwipe(
 
   // Super Like validation
   if (isSuperLike && direction === 'like') {
-    if (hasActivePremium) {
+    if (hasActivePremium && user.premiumTier === 'gold') {
+      // Gold tier: unlimited super likes, no validation needed
+    } else if (hasActivePremium) {
       // Premium users: daily limit of 5 with midnight reset
       let currentSuperLikesUsed = user.superLikesUsedToday;
       if (user.superLikeResetAt && user.superLikeResetAt < now) {
@@ -414,6 +455,7 @@ export async function getSuperLikeStatus(userId: string) {
       superLikeResetAt: true,
       isPremium: true,
       premiumUntil: true,
+      premiumTier: true,
     },
   });
 
@@ -423,6 +465,15 @@ export async function getSuperLikeStatus(userId: string) {
   const hasActivePremium = user.isPremium && user.premiumUntil && user.premiumUntil > now;
 
   if (hasActivePremium) {
+    // Gold tier: unlimited super likes
+    if (user.premiumTier === 'gold') {
+      return {
+        remaining: 999,
+        resetAt: null,
+        isLifetime: false,
+      };
+    }
+
     // Premium: daily limit with midnight reset
     let used = user.superLikesUsedToday;
     if (user.superLikeResetAt && user.superLikeResetAt < now) {

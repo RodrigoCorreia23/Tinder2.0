@@ -9,6 +9,8 @@ import chatRoutes from './modules/chat/chat.routes';
 import mapRoutes from './modules/map/map.routes';
 import plannerRoutes from './modules/date-planner/planner.routes';
 import blockRoutes from './modules/block/block.routes';
+import paymentRoutes from './modules/payment/payment.routes';
+import * as paymentController from './modules/payment/payment.controller';
 import * as userController from './modules/user/user.controller';
 import { authenticate } from './modules/auth/auth.middleware';
 
@@ -16,6 +18,10 @@ const app = express();
 
 // Middleware
 app.use(cors());
+
+// Stripe webhook needs raw body — must be registered BEFORE express.json()
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentController.webhook);
+
 app.use(express.json());
 
 // Health check
@@ -36,6 +42,7 @@ app.use('/api/map', mapRoutes);
 app.use('/api/date-plans', plannerRoutes);
 app.use('/api/matches', chatRoutes);
 app.use('/api/blocks', authenticate, blockRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Error handling
 app.use(errorHandler);

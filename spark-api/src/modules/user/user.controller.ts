@@ -261,6 +261,19 @@ export async function enableTravelMode(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+export async function activatePremiumDebug(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { tier } = req.body;
+    if (!tier || !['premium', 'gold'].includes(tier)) {
+      return res.status(400).json({ error: 'tier must be "premium" or "gold"' });
+    }
+    const result = await userService.activatePremiumDebug(req.userId!, tier);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function disableTravelMode(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await userService.disableTravelMode(req.userId!);

@@ -12,13 +12,16 @@ import {
   TextInput,
   Modal,
   Share,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useLanguageStore } from '@/store/languageStore';
 import { useColors } from '@/hooks/useColors';
+import { useTranslation } from '@/hooks/useTranslation';
 import { COLORS, MAX_PHOTOS, MIN_INTERESTS, MAX_INTERESTS } from '@/utils/constants';
 import * as userService from '@/services/user.service';
 import { Interest } from '@/types';
@@ -36,6 +39,8 @@ export default function ProfileScreen() {
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
   const COLORS = useColors();
+  const { t, language } = useTranslation();
+  const setLanguage = useLanguageStore((s) => s.setLanguage);
 
   // Edit bio state
   const [editingBio, setEditingBio] = useState(false);
@@ -48,6 +53,14 @@ export default function ProfileScreen() {
   const [selectedInterestIds, setSelectedInterestIds] = useState<number[]>([]);
   const [loadingInterests, setLoadingInterests] = useState(false);
   const [savingInterests, setSavingInterests] = useState(false);
+
+  // Edit preferences state
+  const [editingPrefs, setEditingPrefs] = useState(false);
+  const [prefLookingFor, setPrefLookingFor] = useState<string[]>([]);
+  const [prefAgeMin, setPrefAgeMin] = useState('');
+  const [prefAgeMax, setPrefAgeMax] = useState('');
+  const [prefDistance, setPrefDistance] = useState('');
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   // Boost & Travel state
   const [boosting, setBoosting] = useState(false);
@@ -66,6 +79,8 @@ export default function ProfileScreen() {
   );
 
   const isPremium = user.isPremium === true;
+  const premiumTier = user.premiumTier || null;
+  const isGold = isPremium && premiumTier === 'gold';
   const isBoosted = user.boostedUntil ? new Date(user.boostedUntil) > new Date() : false;
   const isTraveling = user.isTravelMode === true && !!user.travelCity;
 
@@ -145,6 +160,46 @@ export default function ProfileScreen() {
     } finally {
       setSavingInterests(false);
     }
+  };
+
+  // Preferences editing
+  const handleEditPrefs = () => {
+    setPrefLookingFor([...user.lookingFor]);
+    setPrefAgeMin(String(user.ageMin));
+    setPrefAgeMax(String(user.ageMax));
+    setPrefDistance(String(user.maxDistanceKm));
+    setEditingPrefs(true);
+  };
+
+  const handleSavePrefs = async () => {
+    setSavingPrefs(true);
+    try {
+      await userService.updateProfile({
+        lookingFor: prefLookingFor,
+        ageMin: parseInt(prefAgeMin) || 18,
+        ageMax: parseInt(prefAgeMax) || 99,
+        maxDistanceKm: parseInt(prefDistance) || 50,
+      });
+      await refreshUser();
+      setEditingPrefs(false);
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Failed to update preferences.');
+      } else {
+        Alert.alert('Error', 'Failed to update preferences.');
+      }
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  const toggleLookingFor = (value: string) => {
+    setPrefLookingFor((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((v) => v !== value);
+      }
+      return [...prev, value];
+    });
   };
 
   // Photo management
@@ -378,21 +433,24 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleActivatePremium = async () => {
+  const handleSubscribe = async (tier: 'premium' | 'gold') => {
     setActivatingPremium(true);
     try {
-      await userService.activatePremium();
+      await userService.activatePremiumDebug(tier);
       await refreshUser();
+      const label = tier === 'gold' ? 'Gold' : 'Premium';
+      const msg = `Spark ${label} activated for 7 days!`;
       if (Platform.OS === 'web') {
-        window.alert('Premium activated!');
+        window.alert(msg);
       } else {
-        Alert.alert('Premium Activated', 'Enjoy your premium features!');
+        Alert.alert('Success', msg);
       }
     } catch {
+      const msg = 'Failed to activate premium. Please try again later.';
       if (Platform.OS === 'web') {
-        window.alert('Coming soon! Premium subscriptions will be available in a future update.');
+        window.alert(msg);
       } else {
-        Alert.alert('Coming Soon', 'Premium subscriptions will be available in a future update.');
+        Alert.alert('Error', msg);
       }
     } finally {
       setActivatingPremium(false);
@@ -476,13 +534,19 @@ export default function ProfileScreen() {
   };
 
   const getReputationLevel = (score: number) => {
-    if (score >= 80) return { label: 'Excellent', color: COLORS.success };
-    if (score >= 60) return { label: 'Good', color: COLORS.secondary };
-    if (score >= 40) return { label: 'Average', color: COLORS.warning };
-    return { label: 'Low', color: COLORS.danger };
+    if (score >= 80) return { label: t('profile.excellent'), color: COLORS.success };
+    if (score >= 60) return { label: t('profile.good'), color: COLORS.secondary };
+    if (score >= 40) return { label: t('profile.average'), color: COLORS.warning };
+    return { label: t('profile.low'), color: COLORS.danger };
   };
 
   const rep = getReputationLevel(user.reputationScore);
+
+  // Translate gender values for display
+  const translateGender = (gender: string) => {
+    const key = `general.${gender}` as string;
+    return t(key);
+  };
 
   // Group interests by category for the modal
   const interestsByCategory: Record<string, Interest[]> = {};
@@ -507,8 +571,8 @@ export default function ProfileScreen() {
             </View>
           )}
           {isPremium && (
-            <View style={styles.premiumCrown}>
-              <Ionicons name="star" size={16} color="#FFD700" />
+            <View style={[styles.premiumCrown, isGold && { backgroundColor: '#FFD700', borderColor: '#DAA520' }]}>
+              <Ionicons name={isGold ? 'trophy' : 'star'} size={16} color={isGold ? '#fff' : '#FFD700'} />
             </View>
           )}
         </View>
@@ -540,7 +604,7 @@ export default function ProfileScreen() {
                 style={styles.bioEditCancelBtn}
                 onPress={() => setEditingBio(false)}
               >
-                <Text style={styles.bioEditCancelText}>Cancel</Text>
+                <Text style={styles.bioEditCancelText}>{t('profile.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.bioEditSaveBtn, savingBio && { opacity: 0.6 }]}
@@ -550,7 +614,7 @@ export default function ProfileScreen() {
                 {savingBio ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.bioEditSaveText}>Save</Text>
+                  <Text style={styles.bioEditSaveText}>{t('profile.save')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -558,7 +622,7 @@ export default function ProfileScreen() {
         ) : (
           <TouchableOpacity onPress={handleEditBio} style={styles.bioTouchable}>
             <Text style={[styles.bio, { color: COLORS.textLight }]}>
-              {user.bio || 'Tap to add a bio...'}
+              {user.bio || t('profile.tapToAddBio')}
             </Text>
             <Ionicons name="pencil" size={14} color={COLORS.textLight} style={{ marginLeft: 6 }} />
           </TouchableOpacity>
@@ -572,14 +636,14 @@ export default function ProfileScreen() {
           onPress={() => setActiveTab('profile')}
         >
           <Ionicons name="person" size={18} color={activeTab === 'profile' ? '#fff' : COLORS.textLight} />
-          <Text style={[styles.tabText, { color: activeTab === 'profile' ? '#fff' : COLORS.textLight }]}>Profile</Text>
+          <Text style={[styles.tabText, { color: activeTab === 'profile' ? '#fff' : COLORS.textLight }]}>{t('profile.title')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'settings' && { backgroundColor: COLORS.primary }]}
           onPress={() => setActiveTab('settings')}
         >
           <Ionicons name="settings" size={18} color={activeTab === 'settings' ? '#fff' : COLORS.textLight} />
-          <Text style={[styles.tabText, { color: activeTab === 'settings' ? '#fff' : COLORS.textLight }]}>Settings</Text>
+          <Text style={[styles.tabText, { color: activeTab === 'settings' ? '#fff' : COLORS.textLight }]}>{t('profile.settings')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -589,13 +653,13 @@ export default function ProfileScreen() {
           <View style={[styles.card, { backgroundColor: COLORS.card }]}>
             <View style={styles.cardHeader}>
               <Ionicons name="color-palette" size={20} color={COLORS.primary} />
-              <Text style={[styles.cardTitle, { color: COLORS.text }]}>Theme</Text>
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.theme')}</Text>
             </View>
             <View style={styles.themeRow}>
               {([
-                { mode: 'light' as ThemeMode, label: 'Light', icon: 'sunny' as const },
-                { mode: 'dark' as ThemeMode, label: 'Dark', icon: 'moon' as const },
-                { mode: 'system' as ThemeMode, label: 'System', icon: 'phone-portrait' as const },
+                { mode: 'light' as ThemeMode, label: t('profile.light'), icon: 'sunny' as const },
+                { mode: 'dark' as ThemeMode, label: t('profile.dark'), icon: 'moon' as const },
+                { mode: 'system' as ThemeMode, label: t('profile.system'), icon: 'phone-portrait' as const },
               ]).map((opt) => (
                 <TouchableOpacity
                   key={opt.mode}
@@ -626,24 +690,185 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          {/* Language Card */}
+          <View style={[styles.card, { backgroundColor: COLORS.card }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="language" size={20} color={COLORS.primary} />
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.language')}</Text>
+            </View>
+            <View style={styles.themeRow}>
+              <TouchableOpacity
+                style={[
+                  styles.themeOption,
+                  {
+                    backgroundColor: language === 'en' ? COLORS.primary : COLORS.backgroundDark,
+                    borderColor: language === 'en' ? COLORS.primary : COLORS.border,
+                  },
+                ]}
+                onPress={() => setLanguage('en')}
+              >
+                <Text style={{ fontSize: 18 }}>{'\ud83c\uddec\ud83c\udde7'}</Text>
+                <Text
+                  style={[
+                    styles.themeOptionText,
+                    { color: language === 'en' ? '#FFFFFF' : COLORS.text },
+                  ]}
+                >
+                  English
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.themeOption,
+                  {
+                    backgroundColor: language === 'pt' ? COLORS.primary : COLORS.backgroundDark,
+                    borderColor: language === 'pt' ? COLORS.primary : COLORS.border,
+                  },
+                ]}
+                onPress={() => setLanguage('pt')}
+              >
+                <Text style={{ fontSize: 18 }}>{'\ud83c\uddf5\ud83c\uddf9'}</Text>
+                <Text
+                  style={[
+                    styles.themeOptionText,
+                    { color: language === 'pt' ? '#FFFFFF' : COLORS.text },
+                  ]}
+                >
+                  Português
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Preferences */}
           <View style={[styles.card, { backgroundColor: COLORS.card }]}>
             <View style={styles.cardHeader}>
               <Ionicons name="options" size={20} color={COLORS.secondary} />
-              <Text style={[styles.cardTitle, { color: COLORS.text }]}>Preferences</Text>
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.preferences')}</Text>
+              {!editingPrefs && (
+                <TouchableOpacity onPress={handleEditPrefs} style={styles.editBtn}>
+                  <Ionicons name="pencil" size={16} color={COLORS.primary} />
+                  <Text style={styles.editBtnText}>{t('profile.edit')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Looking for</Text>
-              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.lookingFor.join(', ')}</Text>
-            </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Age range</Text>
-              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.ageMin} - {user.ageMax}</Text>
-            </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Max distance</Text>
-              <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.maxDistanceKm} km</Text>
-            </View>
+
+            {editingPrefs ? (
+              <View style={{ gap: 16 }}>
+                {/* Looking for chips */}
+                <View style={{ gap: 8 }}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.lookingFor')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {(['male', 'female', 'other'] as const).map((gender) => {
+                      const isSelected = prefLookingFor.includes(gender);
+                      return (
+                        <TouchableOpacity
+                          key={gender}
+                          style={[
+                            styles.prefChip,
+                            {
+                              backgroundColor: isSelected ? COLORS.primary : COLORS.backgroundDark,
+                              borderColor: isSelected ? COLORS.primary : COLORS.border,
+                            },
+                          ]}
+                          onPress={() => toggleLookingFor(gender)}
+                        >
+                          <Text
+                            style={[
+                              styles.prefChipText,
+                              { color: isSelected ? '#FFFFFF' : COLORS.text },
+                            ]}
+                          >
+                            {translateGender(gender)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Age range inputs */}
+                <View style={{ gap: 8 }}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.ageRange')}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <TextInput
+                      style={[styles.prefInput, { backgroundColor: COLORS.backgroundDark, color: COLORS.text, borderColor: COLORS.border }]}
+                      value={prefAgeMin}
+                      onChangeText={setPrefAgeMin}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      placeholder="18"
+                      placeholderTextColor={COLORS.textLight}
+                    />
+                    <Text style={{ color: COLORS.textLight, fontSize: 16 }}>-</Text>
+                    <TextInput
+                      style={[styles.prefInput, { backgroundColor: COLORS.backgroundDark, color: COLORS.text, borderColor: COLORS.border }]}
+                      value={prefAgeMax}
+                      onChangeText={setPrefAgeMax}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      placeholder="99"
+                      placeholderTextColor={COLORS.textLight}
+                    />
+                  </View>
+                </View>
+
+                {/* Max distance input */}
+                <View style={{ gap: 8 }}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.maxDistance')}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TextInput
+                      style={[styles.prefInput, { backgroundColor: COLORS.backgroundDark, color: COLORS.text, borderColor: COLORS.border }]}
+                      value={prefDistance}
+                      onChangeText={setPrefDistance}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      placeholder="50"
+                      placeholderTextColor={COLORS.textLight}
+                    />
+                    <Text style={{ color: COLORS.textLight, fontSize: 14 }}>{t('general.km')}</Text>
+                  </View>
+                </View>
+
+                {/* Save / Cancel buttons */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                  <TouchableOpacity
+                    style={styles.bioEditCancelBtn}
+                    onPress={() => setEditingPrefs(false)}
+                  >
+                    <Text style={[styles.bioEditCancelText, { color: COLORS.text }]}>{t('profile.cancel')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.bioEditSaveBtn, savingPrefs && { opacity: 0.6 }]}
+                    onPress={handleSavePrefs}
+                    disabled={savingPrefs}
+                  >
+                    {savingPrefs ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.bioEditSaveText}>{t('profile.save')}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={styles.settingRow}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.lookingFor')}</Text>
+                  <Text style={[styles.settingValue, { color: COLORS.text }]}>
+                    {user.lookingFor.map((g) => translateGender(g)).join(', ')}
+                  </Text>
+                </View>
+                <View style={styles.settingRow}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.ageRange')}</Text>
+                  <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.ageMin} - {user.ageMax}</Text>
+                </View>
+                <View style={styles.settingRow}>
+                  <Text style={[styles.settingLabel, { color: COLORS.textLight }]}>{t('profile.maxDistance')}</Text>
+                  <Text style={[styles.settingValue, { color: COLORS.text }]}>{user.maxDistanceKm} {t('general.km')}</Text>
+                </View>
+              </>
+            )}
           </View>
         </>
       )}
@@ -654,20 +879,20 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: COLORS.card }, user.isVerified ? styles.verifiedCard : null]}>
         <View style={styles.cardHeader}>
           <Ionicons name="shield-checkmark" size={20} color={user.isVerified ? '#4FC3F7' : COLORS.textLight} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Verification</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.verification')}</Text>
         </View>
         {user.isVerified ? (
           <View style={styles.verifiedRow}>
             <View style={styles.verifiedPill}>
               <Ionicons name="checkmark-circle" size={16} color="#4FC3F7" />
-              <Text style={styles.verifiedPillText}>Verified Profile</Text>
+              <Text style={styles.verifiedPillText}>{t('profile.verifiedProfile')}</Text>
             </View>
-            <Text style={styles.verifiedHint}>Your profile is verified and trusted by the community</Text>
+            <Text style={styles.verifiedHint}>{t('profile.verifiedHint')}</Text>
           </View>
         ) : (
           <View style={styles.verifySection}>
             <Text style={styles.verifyDescription}>
-              Take a selfie to verify your identity. AI will compare it with your profile photos. Verified profiles get more matches!
+              {t('profile.verifyDescription')}
             </Text>
             {verifyResult && !verifyResult.verified && (
               <View style={styles.verifyFailedBox}>
@@ -683,13 +908,13 @@ export default function ProfileScreen() {
               {verifying ? (
                 <>
                   <ActivityIndicator size="small" color="#4FC3F7" />
-                  <Text style={styles.verifyButtonText}>Verifying your identity...</Text>
+                  <Text style={styles.verifyButtonText}>{t('profile.verifying')}</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="camera-outline" size={18} color="#4FC3F7" />
                   <Text style={styles.verifyButtonText}>
-                    {verifyResult && !verifyResult.verified ? 'Retry Verification' : 'Take Selfie to Verify'}
+                    {verifyResult && !verifyResult.verified ? t('profile.retryVerification') : t('profile.takeSelfie')}
                   </Text>
                 </>
               )}
@@ -699,84 +924,155 @@ export default function ProfileScreen() {
       </View>
 
       {/* Premium Card */}
-      <View style={[styles.card, { backgroundColor: COLORS.card }, isPremium ? styles.premiumCardActive : styles.premiumCard]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="star" size={20} color="#FFD700" />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Spark Premium</Text>
-          {isPremium && (
-            <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>ACTIVE</Text>
+      {isPremium ? (
+        <View style={[styles.card, { backgroundColor: COLORS.card }, isGold ? styles.goldCardActive : styles.premiumCardActive]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name={isGold ? 'trophy' : 'star'} size={20} color={isGold ? '#DAA520' : '#FFD700'} />
+            <Text style={[styles.cardTitle, { color: COLORS.text }]}>
+              {isGold ? t('profile.sparkGold') : t('profile.sparkPremium')}
+            </Text>
+            <View style={[styles.activeBadge, isGold && { backgroundColor: '#DAA520' }]}>
+              <Text style={styles.activeBadgeText}>{t('profile.active')}</Text>
             </View>
-          )}
-        </View>
-        {isPremium ? (
+          </View>
           <View style={styles.premiumActiveSection}>
-            <Text style={styles.premiumActiveText}>
-              You're enjoying all Premium benefits!
+            <Text style={[styles.premiumActiveText, isGold && { color: '#8B6914' }]}>
+              {isGold
+                ? t('profile.enjoyingGold')
+                : t('profile.enjoyingPremium')}
             </Text>
             {user.premiumUntil && (
               <Text style={styles.premiumExpiry}>
-                Expires: {new Date(user.premiumUntil).toLocaleDateString()}
+                {t('profile.expires')}: {new Date(user.premiumUntil).toLocaleDateString()}
               </Text>
             )}
           </View>
-        ) : (
-          <View style={styles.premiumUpgradeSection}>
-            <View style={styles.benefitRow}>
-              <Ionicons name="flash" size={16} color="#FFD700" />
-              <Text style={styles.benefitText}>Unlimited swipes</Text>
-            </View>
-            <View style={styles.benefitRow}>
-              <Ionicons name="eye" size={16} color="#FFD700" />
-              <Text style={styles.benefitText}>See who liked you</Text>
-            </View>
-            <View style={styles.benefitRow}>
-              <Ionicons name="star" size={16} color="#FFD700" />
-              <Text style={styles.benefitText}>5 Super Likes per day</Text>
-            </View>
-            <View style={styles.benefitRow}>
-              <Ionicons name="location" size={16} color="#FFD700" />
-              <Text style={styles.benefitText}>Extended map range</Text>
-            </View>
+          {/* Show upgrade to Gold button if on Premium tier */}
+          {!isGold && (
             <TouchableOpacity
-              style={[styles.upgradeButton, activatingPremium && { opacity: 0.6 }]}
-              onPress={handleActivatePremium}
+              style={[styles.goldUpgradeButton, activatingPremium && { opacity: 0.6 }]}
+              onPress={() => handleSubscribe('gold')}
               disabled={activatingPremium}
             >
-              <Ionicons name="star" size={18} color="#fff" />
+              <Ionicons name="trophy" size={18} color="#fff" />
               <Text style={styles.upgradeButtonText}>
-                {activatingPremium ? 'Activating...' : 'Upgrade to Premium'}
+                {activatingPremium ? 'Loading...' : `${t('profile.upgradeToGold')} - \u20AC24.99${t('general.mo')}`}
               </Text>
             </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <>
+          {/* Spark Premium Tier */}
+          <View style={[styles.card, { backgroundColor: COLORS.card }, styles.premiumCard]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="star" size={20} color="#FFD700" />
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.sparkPremium')}</Text>
+              <Text style={styles.tierPrice}>{'\u20AC'}9.99{t('general.mo')}</Text>
+            </View>
+            <View style={styles.premiumUpgradeSection}>
+              <View style={styles.benefitRow}>
+                <Ionicons name="flash" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.unlimitedSwipesBenefit')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="eye" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.seeWhoLikedYou')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="star" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.superLikesPerDay')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="location" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.extendedMapRange')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="arrow-undo" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.rewindLastSwipe')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="rocket" size={16} color="#FFD700" />
+                <Text style={styles.benefitText}>{t('profile.boost30min')}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.upgradeButton, activatingPremium && { opacity: 0.6 }]}
+                onPress={() => handleSubscribe('premium')}
+                disabled={activatingPremium}
+              >
+                <Ionicons name="star" size={18} color="#fff" />
+                <Text style={styles.upgradeButtonText}>
+                  {activatingPremium ? 'Loading...' : `${t('profile.subscribe')} - \u20AC9.99${t('general.mo')}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      </View>
+
+          {/* Spark Gold Tier */}
+          <View style={[styles.card, { backgroundColor: COLORS.card }, styles.goldCard]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="trophy" size={20} color="#DAA520" />
+              <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.sparkGold')}</Text>
+              <Text style={styles.tierPriceGold}>{'\u20AC'}24.99{t('general.mo')}</Text>
+            </View>
+            <View style={styles.premiumUpgradeSection}>
+              <Text style={styles.goldIncludesText}>{t('profile.everythingInPremium')}</Text>
+              <View style={styles.benefitRow}>
+                <Ionicons name="airplane" size={16} color="#DAA520" />
+                <Text style={styles.benefitText}>{t('profile.travelMode')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="trending-up" size={16} color="#DAA520" />
+                <Text style={styles.benefitText}>{t('profile.priorityInDiscover')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="infinite" size={16} color="#DAA520" />
+                <Text style={styles.benefitText}>{t('profile.unlimitedSuperLikes')}</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="shield-checkmark" size={16} color="#DAA520" />
+                <Text style={styles.benefitText}>{t('profile.goldCrownBadge')}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.goldUpgradeButton, activatingPremium && { opacity: 0.6 }]}
+                onPress={() => handleSubscribe('gold')}
+                disabled={activatingPremium}
+              >
+                <Ionicons name="trophy" size={18} color="#fff" />
+                <Text style={styles.upgradeButtonText}>
+                  {activatingPremium ? 'Loading...' : `${t('profile.subscribe')} Gold - \u20AC24.99${t('general.mo')}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
+      )}
 
       {/* Boost Card (Premium only) */}
       {isPremium && (
         <View style={[styles.card, { backgroundColor: COLORS.card }, styles.boostCard]}>
           <View style={styles.cardHeader}>
             <Ionicons name="rocket" size={20} color="#FF9800" />
-            <Text style={[styles.cardTitle, { color: COLORS.text }]}>Boost</Text>
+            <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.boost')}</Text>
             {isBoosted && (
               <View style={[styles.activeBadge, { backgroundColor: '#FF9800' }]}>
-                <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                <Text style={styles.activeBadgeText}>{t('profile.active')}</Text>
               </View>
             )}
           </View>
           {isBoosted ? (
             <View style={{ gap: 4 }}>
               <Text style={{ fontSize: 14, color: COLORS.text, fontWeight: '500' }}>
-                Your profile is boosted!
+                {t('profile.profileBoosted')}
               </Text>
               <Text style={{ fontSize: 12, color: COLORS.textLight }}>
-                Expires: {new Date(user.boostedUntil!).toLocaleTimeString()}
+                {t('profile.expires')}: {new Date(user.boostedUntil!).toLocaleTimeString()}
               </Text>
             </View>
           ) : (
             <View style={{ gap: 10 }}>
               <Text style={{ fontSize: 13, color: COLORS.textLight, lineHeight: 20 }}>
-                Boost your profile for 30 minutes to appear at the top of discover for everyone nearby.
+                {t('profile.boostDescription')}
               </Text>
               <TouchableOpacity
                 style={[styles.boostButton, boosting && { opacity: 0.6 }]}
@@ -785,7 +1081,7 @@ export default function ProfileScreen() {
               >
                 <Ionicons name="rocket" size={18} color="#fff" />
                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}>
-                  {boosting ? 'Boosting...' : 'Boost Now'}
+                  {boosting ? t('profile.boosting') : t('profile.boostNow')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -798,10 +1094,10 @@ export default function ProfileScreen() {
         <View style={[styles.card, { backgroundColor: COLORS.card }, styles.travelCard]}>
           <View style={styles.cardHeader}>
             <Ionicons name="airplane" size={20} color="#5C6BC0" />
-            <Text style={[styles.cardTitle, { color: COLORS.text }]}>Travel Mode</Text>
+            <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.travelModeTitle')}</Text>
             {isTraveling && (
               <View style={[styles.activeBadge, { backgroundColor: '#5C6BC0' }]}>
-                <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                <Text style={styles.activeBadgeText}>{t('profile.active')}</Text>
               </View>
             )}
           </View>
@@ -810,7 +1106,7 @@ export default function ProfileScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons name="location" size={16} color="#5C6BC0" />
                 <Text style={{ fontSize: 15, color: COLORS.text, fontWeight: '600' }}>
-                  Exploring {user.travelCity}
+                  {t('profile.exploring')} {user.travelCity}
                 </Text>
               </View>
               <TouchableOpacity
@@ -819,14 +1115,14 @@ export default function ProfileScreen() {
                 disabled={togglingTravel}
               >
                 <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.danger }}>
-                  {togglingTravel ? 'Disabling...' : 'Disable Travel Mode'}
+                  {togglingTravel ? t('profile.disabling') : t('profile.disableTravelMode')}
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={{ gap: 10 }}>
               <Text style={{ fontSize: 13, color: COLORS.textLight, lineHeight: 20 }}>
-                Explore another city and swipe on people there before you even arrive!
+                {t('profile.exploreDescription')}
               </Text>
               <TouchableOpacity
                 style={styles.travelEnableBtn}
@@ -834,7 +1130,7 @@ export default function ProfileScreen() {
               >
                 <Ionicons name="airplane" size={18} color="#fff" />
                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}>
-                  Explore a City
+                  {t('profile.exploreCity')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -845,13 +1141,13 @@ export default function ProfileScreen() {
           {/* Logout */}
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
-            <Text style={styles.logoutText}>Log Out</Text>
+            <Text style={styles.logoutText}>{t('profile.logOut')}</Text>
           </TouchableOpacity>
 
           {/* Delete Account */}
           <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
             <Ionicons name="trash-outline" size={20} color="#fff" />
-            <Text style={styles.deleteText}>Delete Account</Text>
+            <Text style={styles.deleteText}>{t('profile.deleteAccount')}</Text>
           </TouchableOpacity>
         </>
       )}
@@ -862,7 +1158,7 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="star" size={20} color={COLORS.accent} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Reputation</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.reputation')}</Text>
         </View>
         <View style={styles.repRow}>
           <Text style={[styles.repScore, { color: COLORS.text }]}>{Math.round(user.reputationScore)}</Text>
@@ -877,7 +1173,7 @@ export default function ProfileScreen() {
           />
         </View>
         <Text style={styles.repHint}>
-          Reply to matches within 48h to keep your score high
+          {t('profile.replyWithin48h')}
         </Text>
       </View>
 
@@ -885,16 +1181,16 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="flash" size={20} color={COLORS.accent} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Daily Energy</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.dailyEnergy')}</Text>
         </View>
         {isPremium ? (
           <Text style={[styles.energyNum, { color: COLORS.text }]}>
-            Unlimited <Text style={[styles.energyMax, { color: COLORS.textLight }]}>swipes</Text>
+            {t('profile.unlimitedSwipes')}
           </Text>
         ) : (
           <>
             <Text style={[styles.energyNum, { color: COLORS.text }]}>
-              {user.energyRemaining} <Text style={[styles.energyMax, { color: COLORS.textLight }]}>/ 25 swipes</Text>
+              {user.energyRemaining} <Text style={[styles.energyMax, { color: COLORS.textLight }]}>/ 25 {t('profile.swipes')}</Text>
             </Text>
             <View style={styles.repBar}>
               <View
@@ -912,10 +1208,10 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="heart" size={20} color={COLORS.primary} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Interests</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.interests')}</Text>
           <TouchableOpacity onPress={handleEditInterests} style={styles.editBtn}>
             <Ionicons name="pencil" size={16} color={COLORS.primary} />
-            <Text style={styles.editBtnText}>Edit</Text>
+            <Text style={styles.editBtnText}>{t('profile.edit')}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.chipRow}>
@@ -931,7 +1227,7 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: COLORS.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons name="images" size={20} color={COLORS.secondary} />
-          <Text style={[styles.cardTitle, { color: COLORS.text }]}>Photos ({user.photos.length}/{MAX_PHOTOS})</Text>
+          <Text style={[styles.cardTitle, { color: COLORS.text }]}>{t('profile.photos')} ({user.photos.length}/{MAX_PHOTOS})</Text>
         </View>
         <View style={styles.photoGrid}>
           {user.photos.map((photo, index) => (
@@ -997,7 +1293,7 @@ export default function ProfileScreen() {
         ) : (
           <>
             <Ionicons name="share-outline" size={20} color="#fff" />
-            <Text style={styles.shareButtonText}>Share Profile</Text>
+            <Text style={styles.shareButtonText}>{t('profile.shareProfile')}</Text>
           </>
         )}
       </TouchableOpacity>
@@ -1007,13 +1303,13 @@ export default function ProfileScreen() {
         <View style={styles.travelOverlay}>
           <View style={[styles.travelModalContent, { backgroundColor: COLORS.background }]}>
             <View style={styles.travelModalHeader}>
-              <Text style={[styles.travelModalTitle, { color: COLORS.text }]}>Choose a City</Text>
+              <Text style={[styles.travelModalTitle, { color: COLORS.text }]}>{t('profile.chooseCity')}</Text>
               <TouchableOpacity onPress={() => setShowTravelModal(false)}>
                 <Ionicons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
             <Text style={{ fontSize: 13, color: COLORS.textLight, marginBottom: 16 }}>
-              Select a city to start exploring profiles there.
+              {t('profile.selectCity')}
             </Text>
             {TRAVEL_CITIES.map((city) => (
               <TouchableOpacity
@@ -1044,7 +1340,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: COLORS.background }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: COLORS.text }]}>Edit Interests</Text>
+              <Text style={[styles.modalTitle, { color: COLORS.text }]}>{t('profile.editInterests')}</Text>
               <TouchableOpacity onPress={() => setShowInterestsModal(false)}>
                 <Ionicons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
@@ -1105,7 +1401,7 @@ export default function ProfileScreen() {
               {savingInterests ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.saveInterestsBtnText}>Save Interests</Text>
+                <Text style={styles.saveInterestsBtnText}>{t('profile.save')}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1304,6 +1600,26 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
+  // Preferences
+  prefChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  prefChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  prefInput: {
+    width: 70,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   // Verification
   verifiedCard: {
     borderWidth: 1,
@@ -1379,6 +1695,47 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFD700',
     backgroundColor: '#FFF8F0',
+  },
+  goldCardActive: {
+    borderWidth: 2,
+    borderColor: '#DAA520',
+    backgroundColor: '#FFF8E7',
+  },
+  goldCard: {
+    borderWidth: 1.5,
+    borderColor: '#DAA520',
+    backgroundColor: '#FFFEF5',
+  },
+  tierPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#B8860B',
+  },
+  tierPriceGold: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#8B6914',
+  },
+  goldIncludesText: {
+    fontSize: 13,
+    color: '#8B6914',
+    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  goldUpgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#DAA520',
+    marginTop: 4,
+    shadowColor: '#DAA520',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   activeBadge: {
     backgroundColor: '#FFD700',

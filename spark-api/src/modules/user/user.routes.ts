@@ -46,6 +46,9 @@ router.post('/me/share-link', userController.generateShareLink);
 // Premium
 router.post('/me/premium', userController.activatePremium);
 
+// Premium Debug (activate premium for 7 days without Stripe)
+router.post('/me/premium-debug', userController.activatePremiumDebug);
+
 // Boost
 router.post('/me/boost', userController.activateBoost);
 

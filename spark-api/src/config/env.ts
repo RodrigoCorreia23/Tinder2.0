@@ -17,6 +17,11 @@ const envSchema = z.object({
   AWS_S3_BUCKET: z.string().default('spark-photos'),
   OPENAI_API_KEY: z.string().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PREMIUM_PRICE_ID: z.string().optional(),
+  STRIPE_GOLD_PRICE_ID: z.string().optional(),
+  APP_URL: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

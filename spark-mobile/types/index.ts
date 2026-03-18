@@ -17,6 +17,7 @@ export interface User {
   isVerified: boolean;
   isPremium?: boolean;
   premiumUntil?: string | null;
+  premiumTier?: 'premium' | 'gold' | null;
   boostedUntil?: string | null;
   isTravelMode?: boolean;
   travelLatitude?: number | null;

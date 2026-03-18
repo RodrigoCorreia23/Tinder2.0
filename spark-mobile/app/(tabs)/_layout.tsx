@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useTranslation } from '@/hooks/useTranslation';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useSwipeStore } from '@/store/swipeStore';
 import { useChatStore } from '@/store/chatStore';
@@ -14,6 +15,7 @@ export default function TabsLayout() {
 
   const insets = useSafeAreaInsets();
   const COLORS = useColors();
+  const { t } = useTranslation();
   const likesCount = useSwipeStore((s) => s.receivedLikes.length);
   const matches = useChatStore((s) => s.matches);
   const currentUserId = useAuthStore((s) => s.user?.id);
@@ -44,7 +46,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="discover"
         options={{
-          title: 'Discover',
+          title: t('tab.discover'),
           headerTitle: 'Spark',
           headerTitleStyle: { fontWeight: 'bold', color: COLORS.primary, fontSize: 24 },
           tabBarIcon: ({ color, size }) => (
@@ -55,7 +57,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="likes"
         options={{
-          title: 'Likes',
+          title: t('tab.likes'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="heart-circle" size={size} color={color} />
           ),
@@ -70,7 +72,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="matches"
         options={{
-          title: 'Chat',
+          title: t('tab.chat'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles" size={size} color={color} />
           ),
@@ -85,7 +87,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Nearby',
+          title: t('tab.nearby'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="location" size={size} color={color} />
           ),
@@ -94,7 +96,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('tab.profile'),
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),

@@ -3,8 +3,8 @@ import { AppError } from '../../shared/middleware/errorHandler';
 import { randomizeCoordinates } from '../../shared/utils/geo';
 import { getBlockedIds } from '../block/block.service';
 
-const FREE_RADIUS_METERS = 1000;
-const PREMIUM_RADIUS_METERS = 5000;
+const FREE_RADIUS_METERS = 5000;
+const PREMIUM_RADIUS_METERS = 20000;
 
 // Track online users via socket connections
 const onlineUsers = new Set<string>();
