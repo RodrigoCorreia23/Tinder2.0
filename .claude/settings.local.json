@@ -10,7 +10,10 @@
       "WebFetch(domain:expo.dev)",
       "Bash(npx prisma:*)",
       "Bash(npx --package=prisma@5.20 prisma migrate dev --name add_super_like_block_report --create-only)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

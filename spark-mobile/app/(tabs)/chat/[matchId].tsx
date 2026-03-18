@@ -18,6 +18,7 @@ import { useChatStore } from '@/store/chatStore';
 import { useAuthStore } from '@/store/authStore';
 import { getSocket } from '@/services/socket';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import { Message } from '@/types';
 import DatePlanFlow from '@/components/chat/DatePlanFlow';
 import ProfileModal from '@/components/chat/ProfileModal';
@@ -31,6 +32,7 @@ const isGifMessage = (content: string): boolean => {
 };
 
 export default function ChatScreen() {
+  const C = useColors();
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
   const navigation = useNavigation();
   const router = useRouter();
@@ -306,7 +308,7 @@ export default function ChatScreen() {
     const isGif = isGifMessage(item.content);
 
     return (
-      <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage, isGif && styles.gifBubble]}>
+      <View style={[styles.messageBubble, isMe ? styles.myMessage : [styles.theirMessage, { backgroundColor: C.card }], isGif && styles.gifBubble]}>
         {isGif ? (
           <Image
             source={{ uri: item.content }}
@@ -314,7 +316,7 @@ export default function ChatScreen() {
             resizeMode="cover"
           />
         ) : (
-          <Text style={[styles.messageText, isMe && styles.myMessageText]}>
+          <Text style={[styles.messageText, { color: C.text }, isMe && styles.myMessageText]}>
             {item.content}
           </Text>
         )}
@@ -340,7 +342,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: C.backgroundDark }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
@@ -357,19 +359,19 @@ export default function ChatScreen() {
               <View style={styles.iceBreakersIcon}>
                 <Ionicons name="sparkles" size={28} color={COLORS.secondary} />
               </View>
-              <Text style={styles.iceBreakersTitle}>Break the ice!</Text>
-              <Text style={styles.iceBreakersSubtitle}>Tap a suggestion to send it</Text>
+              <Text style={[styles.iceBreakersTitle, { color: C.text }]}>Break the ice!</Text>
+              <Text style={[styles.iceBreakersSubtitle, { color: C.textLight }]}>Tap a suggestion to send it</Text>
               {iceBreakers.map((msg, idx) => (
                 <TouchableOpacity
                   key={idx}
-                  style={styles.iceBreaker}
+                  style={[styles.iceBreaker, { backgroundColor: C.card, borderColor: C.border }]}
                   onPress={async () => {
                     await sendMessage(matchId!, msg);
                     setIceBreakers([]);
                     flatListRef.current?.scrollToEnd();
                   }}
                 >
-                  <Text style={styles.iceBreakerText}>{msg}</Text>
+                  <Text style={[styles.iceBreakerText, { color: C.text }]}>{msg}</Text>
                   <Ionicons name="send" size={14} color={COLORS.primary} />
                 </TouchableOpacity>
               ))}
@@ -389,23 +391,23 @@ export default function ChatScreen() {
         </View>
       )}
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { backgroundColor: C.background, borderTopColor: C.border }]}>
         <TouchableOpacity
-          style={styles.actionBtn}
+          style={[styles.actionBtn, { backgroundColor: C.backgroundDark }]}
           onPress={() => setShowDatePlan(true)}
         >
-          <Ionicons name="calendar" size={22} color={COLORS.primary} />
+          <Ionicons name="calendar" size={22} color={C.primary} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.actionBtn}
+          style={[styles.actionBtn, { backgroundColor: C.backgroundDark }]}
           onPress={() => setShowGifPicker(true)}
         >
-          <Ionicons name="happy-outline" size={22} color={COLORS.secondary} />
+          <Ionicons name="happy-outline" size={22} color={C.secondary} />
         </TouchableOpacity>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: C.backgroundDark, color: C.text }]}
           placeholder="Type a message..."
-          placeholderTextColor={COLORS.textLight}
+          placeholderTextColor={C.textLight}
           value={text}
           onChangeText={handleChangeText}
           multiline

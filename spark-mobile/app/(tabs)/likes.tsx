@@ -15,6 +15,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import { useSwipeStore } from '@/store/swipeStore';
 import { useAuthStore } from '@/store/authStore';
 import { ReceivedLike } from '@/types';
@@ -24,6 +25,7 @@ const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 48) / 2;
 
 export default function LikesScreen() {
+  const C = useColors();
   const { receivedLikes: likes, likesLoading: loading, loadReceivedLikes } = useSwipeStore();
   const { user, refreshUser } = useAuthStore();
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -71,7 +73,7 @@ export default function LikesScreen() {
     const timeAgo = getTimeAgo(item.likedAt);
 
     return (
-      <TouchableOpacity style={styles.card} onPress={handleCardPress} activeOpacity={0.9}>
+      <TouchableOpacity style={[styles.card, { backgroundColor: C.card }]} onPress={handleCardPress} activeOpacity={0.9}>
         {/* Photo - blurred for non-premium, clear for premium */}
         <View style={styles.photoContainer}>
           <Image
@@ -108,13 +110,13 @@ export default function LikesScreen() {
         <View style={styles.nameContainer}>
           {isPremium ? (
             <>
-              <Text style={styles.nameClear}>{item.firstName}</Text>
-              <Text style={styles.age}>, {item.age}</Text>
+              <Text style={[styles.nameClear, { color: C.text }]}>{item.firstName}</Text>
+              <Text style={[styles.age, { color: C.textLight }]}>, {item.age}</Text>
             </>
           ) : (
             <>
-              <Text style={styles.name}>{'●●●●●●●'}</Text>
-              <Text style={styles.age}>, {item.age}</Text>
+              <Text style={[styles.name, { color: C.textLight }]}>{'●●●●●●●'}</Text>
+              <Text style={[styles.age, { color: C.textLight }]}>, {item.age}</Text>
             </>
           )}
         </View>
@@ -124,21 +126,21 @@ export default function LikesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={[styles.center, { backgroundColor: C.background }]}>
+        <ActivityIndicator size="large" color={C.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: C.background }]}>
       {/* Header info */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: C.border }]}>
         <View style={styles.countBadge}>
           <Ionicons name="heart" size={18} color={COLORS.primary} />
           <Text style={styles.countText}>{likes.length}</Text>
         </View>
-        <Text style={styles.headerTitle}>
+        <Text style={[styles.headerTitle, { color: C.text }]}>
           {likes.length === 1 ? 'person likes you' : 'people like you'}
         </Text>
         {isPremium && (
@@ -162,10 +164,10 @@ export default function LikesScreen() {
       )}
 
       {likes.length === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="heart-outline" size={64} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>No likes yet</Text>
-          <Text style={styles.emptySubText}>
+        <View style={[styles.center, { backgroundColor: C.background }]}>
+          <Ionicons name="heart-outline" size={64} color={C.textLight} />
+          <Text style={[styles.emptyText, { color: C.text }]}>No likes yet</Text>
+          <Text style={[styles.emptySubText, { color: C.textLight }]}>
             When someone likes you, they'll appear here
           </Text>
         </View>
@@ -185,14 +187,14 @@ export default function LikesScreen() {
       {/* Premium modal */}
       <Modal visible={showPremiumModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.premiumModal}>
+          <View style={[styles.premiumModal, { backgroundColor: C.background }]}>
             {/* Gold gradient header */}
             <View style={styles.premiumHeader}>
               <View style={styles.premiumIconCircle}>
                 <Ionicons name="star" size={32} color="#FFD700" />
               </View>
-              <Text style={styles.premiumTitle}>Spark Premium</Text>
-              <Text style={styles.premiumSubtitle}>
+              <Text style={[styles.premiumTitle, { color: C.text }]}>Spark Premium</Text>
+              <Text style={[styles.premiumSubtitle, { color: C.textLight }]}>
                 See who likes you and match instantly
               </Text>
             </View>
@@ -201,23 +203,23 @@ export default function LikesScreen() {
             <View style={styles.featuresList}>
               <View style={styles.featureRow}>
                 <Ionicons name="eye" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>See who liked you</Text>
+                <Text style={[styles.featureText, { color: C.text }]}>See who liked you</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="flash" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>Unlimited swipes</Text>
+                <Text style={[styles.featureText, { color: C.text }]}>Unlimited swipes</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="star" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>5 Super Likes per day</Text>
+                <Text style={[styles.featureText, { color: C.text }]}>5 Super Likes per day</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="location" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>Extended map range (500m)</Text>
+                <Text style={[styles.featureText, { color: C.text }]}>Extended map range (500m)</Text>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="rocket" size={20} color={COLORS.primary} />
-                <Text style={styles.featureText}>Priority in discover</Text>
+                <Text style={[styles.featureText, { color: C.text }]}>Priority in discover</Text>
               </View>
             </View>
 

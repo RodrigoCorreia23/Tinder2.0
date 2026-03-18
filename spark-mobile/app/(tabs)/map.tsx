@@ -11,6 +11,7 @@ import {
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import * as mapService from '@/services/map.service';
 import { useAuthStore } from '@/store/authStore';
 import { NearbyUser } from '@/types';
@@ -26,6 +27,7 @@ if (Platform.OS === 'web') {
 }
 
 export default function MapScreen() {
+  const C = useColors();
   const user = useAuthStore((s) => s.user);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
@@ -133,18 +135,18 @@ export default function MapScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Finding people nearby...</Text>
+      <View style={[styles.center, { backgroundColor: C.background }]}>
+        <ActivityIndicator size="large" color={C.primary} />
+        <Text style={[styles.loadingText, { color: C.textLight }]}>Finding people nearby...</Text>
       </View>
     );
   }
 
   if (error || !location) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="location-outline" size={64} color={COLORS.textLight} />
-        <Text style={styles.errorText}>{error || 'Unable to get location'}</Text>
+      <View style={[styles.center, { backgroundColor: C.background }]}>
+        <Ionicons name="location-outline" size={64} color={C.textLight} />
+        <Text style={[styles.errorText, { color: C.text }]}>{error || 'Unable to get location'}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={initLocation}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
@@ -175,9 +177,9 @@ export default function MapScreen() {
       )}
 
       {/* Info bar */}
-      <View style={styles.infoBar}>
-        <Ionicons name="people" size={16} color={COLORS.primary} />
-        <Text style={styles.infoText}>
+      <View style={[styles.infoBar, { backgroundColor: C.card }]}>
+        <Ionicons name="people" size={16} color={C.primary} />
+        <Text style={[styles.infoText, { color: C.text }]}>
           {nearbyUsers.length} {nearbyUsers.length === 1 ? 'person' : 'people'} within {radiusLabel}
         </Text>
         {onlineCount > 0 && (
@@ -217,9 +219,9 @@ export default function MapScreen() {
       {/* Filters modal */}
       <Modal visible={showFilters} transparent animationType="slide">
         <View style={styles.filtersOverlay}>
-          <View style={styles.filtersModal}>
+          <View style={[styles.filtersModal, { backgroundColor: C.background }]}>
             <View style={styles.filtersHeader}>
-              <Text style={styles.filtersTitle}>Map Filters</Text>
+              <Text style={[styles.filtersTitle, { color: C.text }]}>Map Filters</Text>
               <TouchableOpacity onPress={() => setShowFilters(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textLight} />
               </TouchableOpacity>
@@ -232,7 +234,7 @@ export default function MapScreen() {
             >
               <View style={styles.filterInfo}>
                 <Ionicons name="ellipse" size={16} color={COLORS.success} />
-                <Text style={styles.filterLabel}>Online now</Text>
+                <Text style={[styles.filterLabel, { color: C.text }]}>Online now</Text>
               </View>
               <View style={[styles.toggle, showOnlineOnly && styles.toggleActive]}>
                 <View style={[styles.toggleDot, showOnlineOnly && styles.toggleDotActive]} />
@@ -249,7 +251,7 @@ export default function MapScreen() {
             >
               <View style={styles.filterInfo}>
                 <Ionicons name="star" size={16} color={COLORS.accent} />
-                <Text style={styles.filterLabel}>High reputation (60+)</Text>
+                <Text style={[styles.filterLabel, { color: C.text }]}>High reputation (60+)</Text>
                 {!isPremium && (
                   <View style={styles.premiumTag}>
                     <Text style={styles.premiumTagText}>PRO</Text>
@@ -271,7 +273,7 @@ export default function MapScreen() {
             >
               <View style={styles.filterInfo}>
                 <Ionicons name="heart" size={16} color={COLORS.primary} />
-                <Text style={styles.filterLabel}>Common interests only</Text>
+                <Text style={[styles.filterLabel, { color: C.text }]}>Common interests only</Text>
                 {!isPremium && (
                   <View style={styles.premiumTag}>
                     <Text style={styles.premiumTagText}>PRO</Text>
@@ -301,35 +303,35 @@ export default function MapScreen() {
       {/* Premium modal */}
       <Modal visible={showPremiumModal} transparent animationType="fade">
         <View style={styles.premiumOverlay}>
-          <View style={styles.premiumModal}>
+          <View style={[styles.premiumModal, { backgroundColor: C.background }]}>
             <View style={styles.premiumHeader}>
               <View style={styles.premiumIconCircle}>
                 <Ionicons name="star" size={32} color="#FFD700" />
               </View>
-              <Text style={styles.premiumTitle}>Spark Premium</Text>
-              <Text style={styles.premiumSubtitle}>Unlock the full map experience</Text>
+              <Text style={[styles.premiumTitle, { color: C.text }]}>Spark Premium</Text>
+              <Text style={[styles.premiumSubtitle, { color: C.textLight }]}>Unlock the full map experience</Text>
             </View>
 
             <View style={styles.premiumFeatures}>
               <View style={styles.premiumFeatureRow}>
                 <Ionicons name="radio-outline" size={20} color={COLORS.primary} />
-                <Text style={styles.premiumFeatureText}>5km range (instead of 1km)</Text>
+                <Text style={[styles.premiumFeatureText, { color: C.text }]}>5km range (instead of 1km)</Text>
               </View>
               <View style={styles.premiumFeatureRow}>
                 <Ionicons name="ellipse" size={20} color={COLORS.success} />
-                <Text style={styles.premiumFeatureText}>See who's online right now</Text>
+                <Text style={[styles.premiumFeatureText, { color: C.text }]}>See who's online right now</Text>
               </View>
               <View style={styles.premiumFeatureRow}>
                 <Ionicons name="star" size={20} color={COLORS.accent} />
-                <Text style={styles.premiumFeatureText}>Filter by high reputation</Text>
+                <Text style={[styles.premiumFeatureText, { color: C.text }]}>Filter by high reputation</Text>
               </View>
               <View style={styles.premiumFeatureRow}>
                 <Ionicons name="heart" size={20} color={COLORS.primary} />
-                <Text style={styles.premiumFeatureText}>Filter by common interests</Text>
+                <Text style={[styles.premiumFeatureText, { color: C.text }]}>Filter by common interests</Text>
               </View>
               <View style={styles.premiumFeatureRow}>
                 <Ionicons name="eye" size={20} color={COLORS.primary} />
-                <Text style={styles.premiumFeatureText}>See who liked you</Text>
+                <Text style={[styles.premiumFeatureText, { color: C.text }]}>See who liked you</Text>
               </View>
             </View>
 
@@ -514,6 +516,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   premiumHeader: {
+
     alignItems: 'center',
     paddingVertical: 28,
     paddingHorizontal: 24,

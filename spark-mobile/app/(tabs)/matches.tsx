@@ -13,9 +13,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatStore } from '@/store/chatStore';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import { Match } from '@/types';
 
 export default function MatchesScreen() {
+  const C = useColors();
   const router = useRouter();
   const { matches, isLoading, loadMatches } = useChatStore();
 
@@ -89,7 +91,7 @@ export default function MatchesScreen() {
             </View>
           )}
         </View>
-        <Text style={styles.newMatchName} numberOfLines={1}>
+        <Text style={[styles.newMatchName, { color: C.text }]} numberOfLines={1}>
           {match.otherUser.firstName}
         </Text>
         {timeRemaining && (
@@ -115,7 +117,7 @@ export default function MatchesScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.conversationRow}
+        style={[styles.conversationRow, { borderBottomColor: C.border }]}
         onPress={() => openChat(item.id)}
       >
         <View style={styles.avatarContainer}>
@@ -142,7 +144,7 @@ export default function MatchesScreen() {
         <View style={styles.conversationInfo}>
           <View style={styles.nameRow}>
             <View style={styles.nameWithBadge}>
-              <Text style={styles.conversationName}>{item.otherUser.firstName}</Text>
+              <Text style={[styles.conversationName, { color: C.text }]}>{item.otherUser.firstName}</Text>
               {item.otherUser.isVerified && (
                 <Ionicons name="checkmark-circle" size={14} color="#4FC3F7" />
               )}
@@ -154,7 +156,7 @@ export default function MatchesScreen() {
             )}
           </View>
 
-          <Text style={styles.lastMessage} numberOfLines={1}>
+          <Text style={[styles.lastMessage, { color: C.textLight }]} numberOfLines={1}>
             {item.lastMessage?.content || ''}
           </Text>
 
@@ -181,24 +183,24 @@ export default function MatchesScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={[styles.center, { backgroundColor: C.background }]}>
+        <ActivityIndicator size="large" color={C.primary} />
       </View>
     );
   }
 
   if (matches.length === 0) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="heart-outline" size={64} color={COLORS.textLight} />
-        <Text style={styles.emptyText}>No matches yet</Text>
-        <Text style={styles.emptySubText}>Keep swiping to find your spark!</Text>
+      <View style={[styles.center, { backgroundColor: C.background }]}>
+        <Ionicons name="heart-outline" size={64} color={C.textLight} />
+        <Text style={[styles.emptyText, { color: C.text }]}>No matches yet</Text>
+        <Text style={[styles.emptySubText, { color: C.textLight }]}>Keep swiping to find your spark!</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: C.background }]}>
       <FlatList
         data={conversations}
         keyExtractor={(item) => item.id}
@@ -206,14 +208,14 @@ export default function MatchesScreen() {
         ListHeaderComponent={
           newMatches.length > 0 ? (
             <View style={styles.newMatchesSection}>
-              <Text style={styles.sectionTitle}>New Matches</Text>
+              <Text style={[styles.sectionTitle, { color: C.textLight }]}>New Matches</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.newMatchesRow}>
                   {newMatches.map(renderNewMatch)}
                 </View>
               </ScrollView>
               {conversations.length > 0 && (
-                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Messages</Text>
+                <Text style={[styles.sectionTitle, { marginTop: 20, color: C.textLight }]}>Messages</Text>
               )}
             </View>
           ) : null

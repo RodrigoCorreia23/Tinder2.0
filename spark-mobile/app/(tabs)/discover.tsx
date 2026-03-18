@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getSocket } from '@/services/socket';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 import { Profile } from '@/types';
 import MatchAnimation from '@/components/match/MatchAnimation';
 import PhotoCarousel from '@/components/ui/PhotoCarousel';
@@ -34,6 +35,7 @@ const SWIPE_THRESHOLD = width * 0.25;
 const SWIPE_UP_THRESHOLD = height * 0.15;
 
 export default function DiscoverScreen() {
+  const C = useColors();
   const router = useRouter();
   const {
     profiles,
@@ -193,9 +195,9 @@ export default function DiscoverScreen() {
 
   if (isLoading && !refreshing) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Finding people for you...</Text>
+      <View style={[styles.center, { backgroundColor: C.backgroundDark }]}>
+        <ActivityIndicator size="large" color={C.primary} />
+        <Text style={[styles.loadingText, { color: C.textLight }]}>Finding people for you...</Text>
       </View>
     );
   }
@@ -203,16 +205,16 @@ export default function DiscoverScreen() {
   if (profiles.length === 0 && !refreshing) {
     return (
       <ScrollView
-        contentContainerStyle={styles.center}
+        contentContainerStyle={[styles.center, { backgroundColor: C.backgroundDark }]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.primary} />
         }
       >
         <View style={styles.emptyIconCircle}>
-          <Ionicons name="search" size={40} color={COLORS.primary} />
+          <Ionicons name="search" size={40} color={C.primary} />
         </View>
-        <Text style={styles.emptyText}>No more people nearby</Text>
-        <Text style={styles.emptySubText}>Check back later for new profiles</Text>
+        <Text style={[styles.emptyText, { color: C.text }]}>No more people nearby</Text>
+        <Text style={[styles.emptySubText, { color: C.textLight }]}>Check back later for new profiles</Text>
         <TouchableOpacity style={styles.refreshButton} onPress={loadProfiles}>
           <Ionicons name="refresh" size={18} color="#fff" />
           <Text style={styles.refreshText}>Refresh</Text>
@@ -228,7 +230,7 @@ export default function DiscoverScreen() {
   const isTraveling = user?.isTravelMode === true && !!user?.travelCity;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: C.backgroundDark }]}>
       {/* Travel Mode banner */}
       {isTraveling && (
         <View style={styles.travelBanner}>
@@ -262,9 +264,9 @@ export default function DiscoverScreen() {
             />
           </View>
         )}
-        <Text style={styles.energyLabel}>{isPremium ? 'Premium' : 'swipes left today'}</Text>
-        <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
-          <Ionicons name="options" size={20} color={COLORS.text} />
+        <Text style={[styles.energyLabel, { color: C.textLight }]}>{isPremium ? 'Premium' : 'swipes left today'}</Text>
+        <TouchableOpacity onPress={() => setShowFilters(true)} style={[styles.filterBtn, { backgroundColor: C.background, borderColor: C.border }]}>
+          <Ionicons name="options" size={20} color={C.text} />
         </TouchableOpacity>
       </View>
 
@@ -312,55 +314,55 @@ export default function DiscoverScreen() {
       {/* Filters Modal */}
       <Modal visible={showFilters} animationType="slide" transparent>
         <View style={styles.filterOverlay}>
-          <View style={styles.filterModal}>
+          <View style={[styles.filterModal, { backgroundColor: C.background }]}>
             <View style={styles.filterHeader}>
-              <Text style={styles.filterTitle}>Filters</Text>
+              <Text style={[styles.filterTitle, { color: C.text }]}>Filters</Text>
               <TouchableOpacity onPress={() => setShowFilters(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
+                <Ionicons name="close" size={24} color={C.text} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Age Range</Text>
+              <Text style={[styles.filterLabel, { color: C.text }]}>Age Range</Text>
               <View style={styles.filterRow}>
                 <TextInput
-                  style={styles.filterInput}
+                  style={[styles.filterInput, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
                   keyboardType="number-pad"
                   value={filterAgeMin}
                   onChangeText={setFilterAgeMin}
                   placeholder="Min"
-                  placeholderTextColor={COLORS.textLight}
+                  placeholderTextColor={C.textLight}
                   maxLength={2}
                 />
-                <Text style={styles.filterDash}>-</Text>
+                <Text style={[styles.filterDash, { color: C.textLight }]}>-</Text>
                 <TextInput
-                  style={styles.filterInput}
+                  style={[styles.filterInput, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
                   keyboardType="number-pad"
                   value={filterAgeMax}
                   onChangeText={setFilterAgeMax}
                   placeholder="Max"
-                  placeholderTextColor={COLORS.textLight}
+                  placeholderTextColor={C.textLight}
                   maxLength={2}
                 />
               </View>
             </View>
 
             <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Max Distance (km)</Text>
+              <Text style={[styles.filterLabel, { color: C.text }]}>Max Distance (km)</Text>
               <TextInput
-                style={styles.filterInput}
+                style={[styles.filterInput, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
                 keyboardType="number-pad"
                 value={filterDistance}
                 onChangeText={setFilterDistance}
                 placeholder="Distance"
-                placeholderTextColor={COLORS.textLight}
+                placeholderTextColor={C.textLight}
                 maxLength={4}
               />
             </View>
 
             <View style={styles.filterActions}>
-              <TouchableOpacity style={styles.resetBtn} onPress={handleResetFilters}>
-                <Text style={styles.resetBtnText}>Reset</Text>
+              <TouchableOpacity style={[styles.resetBtn, { borderColor: C.border }]} onPress={handleResetFilters}>
+                <Text style={[styles.resetBtnText, { color: C.textLight }]}>Reset</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.applyBtn} onPress={handleApplyFilters}>
                 <Text style={styles.applyBtnText}>Apply</Text>

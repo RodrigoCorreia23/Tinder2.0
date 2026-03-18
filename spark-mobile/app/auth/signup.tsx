@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 
 const GENDERS = [
   { label: 'Male', value: 'male' },
@@ -22,6 +23,7 @@ const GENDERS = [
 ];
 
 export default function SignupScreen() {
+  const C = useColors();
   const router = useRouter();
   const signup = useAuthStore((s) => s.signup);
 
@@ -59,36 +61,36 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: C.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.logo}>Spark</Text>
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.stepText}>Step {step} of 3</Text>
+        <Text style={[styles.title, { color: C.text }]}>Create Account</Text>
+        <Text style={[styles.stepText, { color: C.textLight }]}>Step {step} of 3</Text>
 
         {step === 1 && (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
               placeholder="First Name"
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={C.textLight}
               value={firstName}
               onChangeText={setFirstName}
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
               placeholder="Email"
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={C.textLight}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
               placeholder="Password (min 8 characters)"
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={C.textLight}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -115,23 +117,23 @@ export default function SignupScreen() {
         {step === 2 && (
           <View style={styles.form}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
               placeholder="Date of Birth (YYYY-MM-DD)"
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={C.textLight}
               value={dateOfBirth}
               onChangeText={setDateOfBirth}
             />
 
-            <Text style={styles.label}>I am</Text>
+            <Text style={[styles.label, { color: C.text }]}>I am</Text>
             <View style={styles.chipRow}>
               {GENDERS.map((g) => (
                 <TouchableOpacity
                   key={g.value}
-                  style={[styles.chip, gender === g.value && styles.chipActive]}
+                  style={[styles.chip, { borderColor: C.border, backgroundColor: C.backgroundDark }, gender === g.value && styles.chipActive]}
                   onPress={() => setGender(g.value)}
                 >
                   <Text
-                    style={[styles.chipText, gender === g.value && styles.chipTextActive]}
+                    style={[styles.chipText, { color: C.text }, gender === g.value && styles.chipTextActive]}
                   >
                     {g.label}
                   </Text>
@@ -140,8 +142,8 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.navRow}>
-              <TouchableOpacity style={styles.backButton} onPress={() => setStep(1)}>
-                <Text style={styles.backText}>Back</Text>
+              <TouchableOpacity style={[styles.backButton, { borderColor: C.border }]} onPress={() => setStep(1)}>
+                <Text style={[styles.backText, { color: C.textLight }]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, { flex: 1 }]}
@@ -161,17 +163,18 @@ export default function SignupScreen() {
 
         {step === 3 && (
           <View style={styles.form}>
-            <Text style={styles.label}>I'm looking for</Text>
+            <Text style={[styles.label, { color: C.text }]}>I'm looking for</Text>
             <View style={styles.chipRow}>
               {GENDERS.map((g) => (
                 <TouchableOpacity
                   key={g.value}
-                  style={[styles.chip, lookingFor.includes(g.value) && styles.chipActive]}
+                  style={[styles.chip, { borderColor: C.border, backgroundColor: C.backgroundDark }, lookingFor.includes(g.value) && styles.chipActive]}
                   onPress={() => toggleLookingFor(g.value)}
                 >
                   <Text
                     style={[
                       styles.chipText,
+                      { color: C.text },
                       lookingFor.includes(g.value) && styles.chipTextActive,
                     ]}
                   >
@@ -182,8 +185,8 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.navRow}>
-              <TouchableOpacity style={styles.backButton} onPress={() => setStep(2)}>
-                <Text style={styles.backText}>Back</Text>
+              <TouchableOpacity style={[styles.backButton, { borderColor: C.border }]} onPress={() => setStep(2)}>
+                <Text style={[styles.backText, { color: C.textLight }]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, { flex: 1 }, loading && styles.buttonDisabled]}
@@ -200,7 +203,7 @@ export default function SignupScreen() {
 
         {step === 1 && (
           <TouchableOpacity onPress={() => router.push('/auth/login')}>
-            <Text style={styles.link}>
+            <Text style={[styles.link, { color: C.textLight }]}>
               Already have an account? <Text style={styles.linkBold}>Log In</Text>
             </Text>
           </TouchableOpacity>

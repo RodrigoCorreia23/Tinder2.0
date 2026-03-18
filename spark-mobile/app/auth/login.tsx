@@ -12,8 +12,10 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { COLORS } from '@/utils/constants';
+import { useColors } from '@/hooks/useColors';
 
 export default function LoginScreen() {
+  const C = useColors();
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
 
@@ -40,18 +42,18 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: C.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
         <Text style={styles.logo}>Spark</Text>
-        <Text style={styles.tagline}>Find your spark nearby</Text>
+        <Text style={[styles.tagline, { color: C.textLight }]}>Find your spark nearby</Text>
 
         <View style={styles.form}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
             placeholder="Email"
-            placeholderTextColor={COLORS.textLight}
+            placeholderTextColor={C.textLight}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -59,9 +61,9 @@ export default function LoginScreen() {
           />
 
           <TextInput
-            style={styles.input}
+            style={[styles.input, { borderColor: C.border, color: C.text, backgroundColor: C.backgroundDark }]}
             placeholder="Password"
-            placeholderTextColor={COLORS.textLight}
+            placeholderTextColor={C.textLight}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -79,7 +81,7 @@ export default function LoginScreen() {
         </View>
 
         <TouchableOpacity onPress={() => router.push('/auth/signup')}>
-          <Text style={styles.link}>
+          <Text style={[styles.link, { color: C.textLight }]}>
             Don't have an account? <Text style={styles.linkBold}>Sign Up</Text>
           </Text>
         </TouchableOpacity>
