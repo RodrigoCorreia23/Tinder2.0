@@ -26,6 +26,7 @@ Spark is a dating app built to create meaningful connections through intentional
 | **GIFs** | Giphy API |
 | **Photo Upload** | Cloudinary |
 | **Dark Mode** | Zustand theme store + dynamic colors |
+| **i18n** | Custom translation system (PT/EN) with Zustand store |
 | **Hosting** | Render (backend + DB) + EAS (mobile builds + OTA updates) |
 
 ---
@@ -209,8 +210,9 @@ Includes everything in Spark Premium, plus:
 
 #### 27. Editable Profile
 - Edit **bio** (max 300 characters)
-- Edit **interests** (min 3, max 15) via an interest picker modal
-- Edit **photos**: reorder via drag, add new photos, delete existing (max 6 photos)
+- Edit **interests** (min 3, max 15) via an interest picker modal grouped by category
+- Edit **photos**: reorder via up/down arrows, add new photos, delete existing (max 6 photos)
+- Edit **preferences**: looking for (multi-select Male/Female/Other), age range (min/max), max distance (km)
 
 #### 28. Pull to Refresh
 - On the **discover screen** to reload candidate profiles
@@ -225,7 +227,13 @@ Includes everything in Spark Premium, plus:
 
 #### 31. Profile & Settings Tabs
 - **Profile tab**: reputation score, energy bar, interests, photos, bio
-- **Settings tab**: theme toggle, preferences, verification, premium subscription, boost, travel mode, share profile, logout, delete account
+- **Settings tab**: theme toggle, language toggle, editable preferences, verification, premium subscription, boost, travel mode, share profile, logout, delete account
+
+#### 31b. Multi-Language Support (PT/EN)
+- Toggle between **English** (🇬🇧) and **Português** (🇵🇹) in settings
+- Persisted via Zustand language store
+- Translations cover: tab names, discover screen, likes, chat, profile/settings, auth screens, and general UI
+- Hook `useTranslation()` provides `t(key)` function for all components
 
 #### 32. Push Notifications
 - Real **Expo Push API** notifications when app is in background
@@ -350,12 +358,15 @@ Tinder2.0/
 |   |   +-- swipeStore.ts         # Swipe state (profiles, energy)
 |   |   +-- chatStore.ts          # Chat state (matches, messages)
 |   |   +-- themeStore.ts         # Theme state (light/dark/system)
+|   |   +-- languageStore.ts     # Language state (en/pt)
 |   +-- hooks/
 |   |   +-- useColors.ts          # Dynamic color hook based on theme
+|   |   +-- useTranslation.ts     # Translation hook (PT/EN)
 |   +-- types/
 |   |   +-- index.ts              # All TypeScript interfaces
 |   +-- utils/
 |   |   +-- constants.ts          # Colors, API URL, limits
+|   |   +-- i18n.ts               # EN/PT translations dictionary
 |   +-- app.json                  # Expo configuration
 |
 +-- SPARK_DOCUMENTATION.md        # This file
