@@ -54,13 +54,14 @@ export default function ProfileScreen() {
   const [showTravelModal, setShowTravelModal] = useState(false);
   const [togglingTravel, setTogglingTravel] = useState(false);
 
+  const router = useRouter();
+
   if (!user) return null;
 
   const age = Math.floor(
     (Date.now() - new Date(user.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
   );
 
-  const router = useRouter();
   const isPremium = user.isPremium === true;
   const isBoosted = user.boostedUntil ? new Date(user.boostedUntil) > new Date() : false;
   const isTraveling = user.isTravelMode === true && !!user.travelCity;
