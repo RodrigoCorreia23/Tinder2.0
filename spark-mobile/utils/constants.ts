@@ -1,4 +1,4 @@
-export const API_URL = 'https://spark-api-yvl3.onrender.com/api';
+export const API_URL = 'http://192.168.59.70/api';
 
 export const COLORS = {
   primary: '#FF6B6B',
