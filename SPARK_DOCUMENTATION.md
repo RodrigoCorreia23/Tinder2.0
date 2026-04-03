@@ -642,66 +642,97 @@ Recalculated every 5 messages.
 
 ---
 
-## Production Deployment
+## Production Deployment (VM)
 
-### Backend (Render)
+The backend runs on a dedicated VM (Proxmox) with full control over the infrastructure.
 
-- **API URL:** https://spark-api-yvl3.onrender.com
-- **Health check:** https://spark-api-yvl3.onrender.com/api/health
-- **Platform:** Render (free tier)
-- **Database:** PostgreSQL on Render (free tier)
-- **Auto-deploy:** Pushes to `main` branch on GitHub trigger automatic redeploy
+### VM Details
 
-> **Note:** On the free tier, the server sleeps after 15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake up. After that, it's fast.
+| | |
+|---|---|
+| **Host** | `192.168.59.70` |
+| **OS** | Ubuntu 24.04 LTS |
+| **RAM** | 4 GB |
+| **Disk** | 15 GB |
+| **SSH** | `ssh rcorreia@192.168.59.70` |
+| **API URL** | `http://192.168.59.70/api` |
+| **Health check** | `http://192.168.59.70/api/health` |
 
-### Updating the Backend
+### VM Stack
+
+| Component | Details |
+|-----------|---------|
+| **Node.js** | v22 |
+| **PostgreSQL** | v16 (local, user: `spark_user`, db: `spark`) |
+| **PM2** | Process manager (auto-restart, boot startup) |
+| **Nginx** | Reverse proxy on port 80 (with WebSocket support) |
+
+### Deploying Backend Changes
+
+A deploy script (`deploy.sh`) syncs code to the VM, builds, and restarts in ~10 seconds:
 
 ```bash
-cd spark-api
-# Make your changes
-cd ..
-git add -A
-git commit -m "description"
-git push
-# Render auto-deploys from GitHub
+# From the project root
+bash deploy.sh
+```
+
+What it does:
+1. `rsync` — copies only changed files (excludes `node_modules`, `dist`, `.env`)
+2. `npm install` — installs any new dependencies
+3. `npm run build` — compiles TypeScript
+4. `npx prisma migrate deploy` — applies any new migrations
+5. `pm2 restart spark-api` — restarts the API with zero downtime
+
+### Manual Deploy (alternative)
+
+```bash
+ssh rcorreia@192.168.59.70
+cd ~/Tinder2.0/spark-api
+git pull
+npm install
+npm run build
+npx prisma migrate deploy
+pm2 restart spark-api
+```
+
+### VM Management Commands
+
+```bash
+# Check API status
+pm2 status
+
+# View live logs
+pm2 logs spark-api
+
+# Restart API
+pm2 restart spark-api
+
+# Stop API
+pm2 stop spark-api
+
+# Check Nginx
+sudo systemctl status nginx
+
+# Check PostgreSQL
+sudo systemctl status postgresql
 ```
 
 ### Updating the Frontend (OTA -- no reinstall needed)
 
+For JavaScript-only changes (UI, logic, bug fixes):
+
 ```bash
 cd spark-mobile
-git add -A
-git commit -m "description"
 eas update --branch preview --message "description"
 # App updates automatically on next open
 ```
 
-### Render Dashboard
+### Previous Cloud Hosting (Render — deprecated)
 
-- **Project:** https://dashboard.render.com
-- **Web Service:** spark-api
-- **Database:** spark-db (PostgreSQL)
+The app was previously hosted on Render (free tier). The VM replaced it for better performance and always-on availability.
 
-### Environment Variables (Render)
-
-| Variable | Value |
-|----------|-------|
-| `DATABASE_URL` | (set automatically by Render PostgreSQL) |
-| `JWT_SECRET` | (64-byte hex key) |
-| `JWT_REFRESH_SECRET` | (64-byte hex key) |
-| `JWT_EXPIRES_IN` | `24h` |
-| `JWT_REFRESH_EXPIRES_IN` | `7d` |
-| `NODE_ENV` | `production` |
-| `PORT` | `3000` |
-| `OPENAI_API_KEY` | (OpenAI API key) |
-| `STRIPE_SECRET_KEY` | (Stripe secret key) |
-| `STRIPE_WEBHOOK_SECRET` | (Stripe webhook secret) |
-| `STRIPE_PREMIUM_PRICE_ID` | (Stripe price ID) |
-| `STRIPE_GOLD_PRICE_ID` | (Stripe price ID) |
-| `CLOUDINARY_CLOUD_NAME` | (Cloudinary cloud name) |
-| `CLOUDINARY_API_KEY` | (Cloudinary API key) |
-| `CLOUDINARY_API_SECRET` | (Cloudinary API secret) |
-| `APP_URL` | `https://spark-api-yvl3.onrender.com` |
+- Render API (deprecated): `https://spark-api-yvl3.onrender.com`
+- Render DB (deprecated): `spark-db` on Render PostgreSQL
 
 ---
 
@@ -802,25 +833,64 @@ Opens at **http://localhost:5555**.
 
 ## Mobile App Build (Android)
 
-The app is built using **Expo Application Services (EAS)** for Android APK generation.
+### Local Build (recommended — fast, ~3-5 min)
 
-### Prerequisites
+Requires **Android Studio** with the Android SDK installed.
+
+**First time setup:**
+```bash
+cd spark-mobile
+
+# Generate native Android project
+npx expo prebuild --platform android
+
+# Set SDK path (only needed once)
+# In android/local.properties, ensure:
+# sdk.dir=C\:/Users/Rodrigo/AppData/Local/Android/Sdk
+```
+
+**Build APK:**
+```bash
+cd spark-mobile/android
+.\gradlew.bat assembleRelease
+```
+
+The APK is generated at:
+```
+spark-mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+**Install on phone:**
+1. **USB cable:** Connect phone → copy APK → open and install
+2. **ADB:** `adb install android/app/build/outputs/apk/release/app-release.apk`
+3. **Share:** Send APK via email/Drive/WhatsApp to yourself → open on phone
+
+> First install: Allow "Install from unknown sources" when prompted.
+
+**After code changes (JS only — no new native packages):**
+```bash
+cd spark-mobile/android
+.\gradlew.bat assembleRelease
+# Copy new APK to phone
+```
+
+Or use OTA update (no reinstall needed):
+```bash
+eas update --branch preview --message "description"
+```
+
+### Cloud Build (EAS — slower, ~15-20 min)
+
+For when you can't build locally or need iOS builds.
 
 ```bash
 npm install -g eas-cli
 eas login
-```
 
-### Build Commands
-
-```bash
 cd spark-mobile
 
-# Preview APK (for testing on real devices)
+# Preview APK
 eas build --profile preview --platform android
-
-# Development build (with dev tools)
-eas build --profile development --platform android
 
 # Production build (for Play Store)
 eas build --profile production --platform android
